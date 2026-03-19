@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mission Control</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-top">
+          <div class="brand">
+            <div class="brand-mark">MC</div>
+            <div class="brand-copy">
+              <div class="brand-title">Mission Control</div>
+              <div class="brand-subtitle">Operator Console</div>
+            </div>
+          </div>
+
+          <div class="sidebar-source-count" id="source-count">0 sources</div>
+
+          <nav class="sidebar-nav" aria-label="Primary" id="nav"></nav>
+        </div>
+
+        <div class="sidebar-bottom">
+          <div class="sidebar-divider"></div>
+          <div class="agent-indicator">
+            <span class="truth-dot truth-verified"></span>
+            <span>Mansa</span>
+          </div>
+          <button id="refresh-data" class="btn btn-secondary sidebar-refresh" type="button">Refresh</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="header-bar">
+          <div class="header-left">
+            <button class="hamburger-btn" id="hamburger-btn" type="button" aria-label="Open navigation">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2" y="4" width="16" height="2" rx="1" fill="currentColor"/><rect x="2" y="9" width="16" height="2" rx="1" fill="currentColor"/><rect x="2" y="14" width="16" height="2" rx="1" fill="currentColor"/></svg>
+            </button>
+            <div class="header-tagline">OBSERVABLE. STEERABLE. COST-AWARE.</div>
+            <h1 class="header-title" id="view-title">Overview</h1>
+          </div>
+
+          <div class="header-right">
+            <span class="header-pill" id="generated-at">Generated —</span>
+            <span class="header-pill" id="last-refreshed">Last refreshed —</span>
+            <span class="header-pill header-pill-alert" id="open-alerts-pill">0 open alerts</span>
+          </div>
+        </header>
+
+        <section class="content-wrap">
+          <div id="app" class="view fade-in"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
