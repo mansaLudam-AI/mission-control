@@ -16,6 +16,9 @@ const PUSH_TTL_MS = 10 * 60 * 1000;
 let pushedState = null;
 let pushedAt = 0;
 
+// Nudge transport config — nudges are disabled until a real transport is configured
+const NUDGE_ENDPOINT = process.env.MC_NUDGE_ENDPOINT || null;
+
 // AI summary config
 const AI_KEY = process.env.MC_AI_KEY || null;
 const AI_MODEL = process.env.MC_AI_MODEL || 'gemini-2.5-flash';
@@ -224,6 +227,10 @@ async function handleSummary(req, res) {
 // --- Nudge system ---
 
 async function handleNudge(req, res) {
+  if (!NUDGE_ENDPOINT) {
+    return sendJson(res, 501, { error: 'nudge_not_configured', message: 'Set MC_NUDGE_ENDPOINT to enable nudges.' });
+  }
+
   const raw = await readBody(req);
   let body;
   try { body = raw ? JSON.parse(raw) : {}; } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
@@ -235,6 +242,26 @@ async function handleNudge(req, res) {
   const nudgeId = `nudge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const record = { nudgeId, type: body.type, targetId: body.targetId || null, message: body.message || '', ts, source: 'mission-control-ui' };
 
+  // Forward to configured transport endpoint
+  try {
+    const payload = JSON.stringify(record);
+    const parsed = new URL(NUDGE_ENDPOINT);
+    const proto = parsed.protocol === 'https:' ? https : http;
+    await new Promise((resolve, reject) => {
+      const fwd = proto.request(parsed, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } }, (fwdRes) => {
+        fwdRes.resume();
+        fwdRes.on('end', resolve);
+      });
+      fwd.on('error', reject);
+      fwd.setTimeout(10000, () => { fwd.destroy(); reject(new Error('nudge transport timeout')); });
+      fwd.write(payload);
+      fwd.end();
+    });
+  } catch (err) {
+    return sendJson(res, 502, { error: 'nudge_transport_failed', message: err.message });
+  }
+
+  // Also log locally for audit
   const dir = path.join(workspaceRoot, 'out', 'nudges');
   fs.mkdirSync(dir, { recursive: true });
   fs.appendFileSync(path.join(dir, `${ts.slice(0, 10)}.jsonl`), `${JSON.stringify(record)}\n`);
@@ -245,7 +272,12 @@ async function handleNudge(req, res) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || `127.0.0.1:${port}`}`);
   if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, service: 'mission-control', port });
-  if (url.pathname === '/api/state' && req.method === 'GET') return sendJson(res, 200, getState());
+  if (url.pathname === '/api/state' && req.method === 'GET') {
+    const s = getState();
+    s.meta = s.meta || {};
+    s.meta.nudgeEnabled = !!NUDGE_ENDPOINT;
+    return sendJson(res, 200, s);
+  }
   if (url.pathname === '/api/state' && req.method === 'POST') return handleStatePush(req, res);
   if (url.pathname === '/api/summary' && req.method === 'GET') return handleSummary(req, res);
   if (url.pathname === '/api/nudge' && req.method === 'POST') return handleNudge(req, res);

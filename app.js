@@ -36,6 +36,7 @@ let aiSummaryStateKey = null;
 let activeActivityTab = 'all';
 let activeSettingsTab = 'spend';
 let snoozedProblems = {};
+let nudgeEnabled = false;
 
 // Load snoozed problems from localStorage
 try { snoozedProblems = JSON.parse(localStorage.getItem('mc_snoozed_problems') || '{}'); } catch { snoozedProblems = {}; }
@@ -237,11 +238,11 @@ function renderCommitmentsWidget() {
               <div class="v5-commitment-context">${escapeHtml(c.context || 'No context recorded')}</div>
               ${c.proof ? `<div class="v5-commitment-proof">Proof: ${escapeHtml(c.proof)}</div>` : ''}
               <div class="v5-commitment-dates">Made: ${escapeHtml(formatDateTime(c.madeAt))} · Due: ${escapeHtml(formatDateTime(c.dueBy))}${c.resolvedAt ? ` · Resolved: ${escapeHtml(formatDateTime(c.resolvedAt))}` : ''}</div>
-              <div class="v5-commitment-actions">
+              ${nudgeEnabled ? `<div class="v5-commitment-actions">
                 ${c.status === 'in_progress' ? `<button class="btn btn-secondary btn-sm" type="button" data-nudge-type="deadline_extension" data-nudge-target="${escapeHtml(c.id || '')}">Extend deadline</button>` : ''}
                 ${c.status === 'at_risk' ? `<button class="btn btn-secondary btn-sm" type="button" data-nudge-type="priority_change" data-nudge-target="${escapeHtml(c.id || '')}">I'll handle it</button>` : ''}
                 ${c.status === 'missed' ? `<button class="btn btn-secondary btn-sm" type="button" data-nudge-type="instruction" data-nudge-target="${escapeHtml(c.id || '')}" data-nudge-message="Acknowledged">Acknowledged</button>` : ''}
-              </div>
+              </div>` : ''}
             </div>
           </div>
         `).join('')}
@@ -271,7 +272,7 @@ function renderActiveWork() {
             <span class="v5-work-title">${escapeHtml(t.title || 'Untitled')}</span>
           </div>
           <div class="v5-work-meta">${escapeHtml(t.project || 'general')} · ${escapeHtml(humanize(t.status || 'in progress'))}</div>
-          <button class="btn btn-secondary btn-sm v5-nudge-inline" type="button" data-nudge-type="status_request" data-nudge-target="${escapeHtml(t.id || '')}" data-nudge-message="What's the status on this?">Ask for update</button>
+          ${nudgeEnabled ? `<button class="btn btn-secondary btn-sm v5-nudge-inline" type="button" data-nudge-type="status_request" data-nudge-target="${escapeHtml(t.id || '')}" data-nudge-message="What's the status on this?">Ask for update</button>` : ''}
         </div>
       `).join('')}</div>` : '<div class="v5-empty">No active tasks</div>'}
       ${totalNow > 5 ? `<div class="v5-more">and ${totalNow - 5} more</div>` : ''}
@@ -336,7 +337,7 @@ function renderNeedsAttention() {
               </div>
               <div class="v5-attention-actions">
                 <button class="btn btn-secondary btn-sm" type="button" data-snooze-id="${escapeHtml(item.id)}">Snooze 24h</button>
-                ${String(item.severity).toLowerCase() === 'critical' ? `<button class="btn btn-secondary btn-sm" type="button" data-nudge-type="priority_change" data-nudge-target="${escapeHtml(item.id)}" data-nudge-message="Prioritize this problem">Prioritize this</button>` : ''}
+                ${nudgeEnabled && String(item.severity).toLowerCase() === 'critical' ? `<button class="btn btn-secondary btn-sm" type="button" data-nudge-type="priority_change" data-nudge-target="${escapeHtml(item.id)}" data-nudge-message="Prioritize this problem">Prioritize this</button>` : ''}
               </div>
             </div>
           `;
@@ -784,12 +785,14 @@ async function loadState() {
   try { response = await fetch(`/api/state?ts=${cacheBust}`); } catch { response = null; }
   if (response?.ok) state = await response.json();
   else { const fallback = await fetch(`./data/state.json?ts=${cacheBust}`); state = await fallback.json(); }
+  nudgeEnabled = !!state?.meta?.nudgeEnabled;
   sourceCount.textContent = `${state?.meta?.dataSources?.length || 0} sources`;
   const freshnessClass = getFreshnessClass(state?.meta?.generatedAt);
   generatedAtEl.innerHTML = `<span class="freshness-dot freshness-${freshnessClass}"></span>Generated ${escapeHtml(formatDateTime(state?.meta?.generatedAt))}`;
   lastRefreshedEl.textContent = `Last refreshed ${formatTime(new Date())}`;
   const needsMe = getNeedsMeCount();
   openAlertsEl.textContent = needsMe > 0 ? `${needsMe} needs me` : '0 alerts';
+  updateCommandBarVisibility();
   draw();
 }
 
@@ -905,6 +908,13 @@ function wireCommandBar(formId, inputId, feedbackId) {
 function initCommandBar() {
   wireCommandBar('command-bar-form', 'command-bar-input', 'command-bar-feedback');
   wireCommandBar('command-bar-form-desktop', 'command-bar-input-desktop', 'command-bar-feedback-desktop');
+}
+
+function updateCommandBarVisibility() {
+  const mobileBar = document.querySelector('.v5-command-bar-mobile');
+  const desktopBar = document.querySelector('.sidebar-command-bar');
+  if (mobileBar) mobileBar.style.display = nudgeEnabled ? '' : 'none';
+  if (desktopBar) desktopBar.style.display = nudgeEnabled ? '' : 'none';
 }
 
 async function init() {
