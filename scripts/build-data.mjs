@@ -202,6 +202,47 @@ function collectUsageRecords() {
   }).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 }
 
+
+function readCommitments(now = new Date()) {
+  const filePath = path.join(workspaceRoot, 'out', 'commitments', 'active.jsonl');
+  if (!exists(filePath)) return [];
+  const rows = [];
+  const raw = read(filePath).trim();
+  if (!raw) return rows;
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line);
+      const dueMs = row.dueBy ? new Date(row.dueBy).getTime() : null;
+      let status = row.status || 'in_progress';
+      if (status === 'in_progress' && dueMs) {
+        const diff = dueMs - now.getTime();
+        if (diff < 0) status = 'missed';
+        else if (diff <= 30 * 60 * 1000) status = 'at_risk';
+      }
+      rows.push({
+        ...row,
+        status,
+        _truth: truth('verified', path.relative(workspaceRoot, filePath), row.resolvedAt || row.madeAt || toIso(stat(filePath).mtimeMs))
+      });
+    } catch {}
+  }
+  return rows.sort((a, b) => new Date(b.madeAt || 0) - new Date(a.madeAt || 0));
+}
+
+function buildCommitmentStats(commitments) {
+  const made = commitments.length;
+  const delivered = commitments.filter((item) => item.status === 'delivered').length;
+  const missed = commitments.filter((item) => item.status === 'missed').length;
+  const atRisk = commitments.filter((item) => item.status === 'at_risk').length;
+  const onTime = commitments.filter((item) => item.status === 'delivered' && item.resolvedAt && item.dueBy && new Date(item.resolvedAt) <= new Date(item.dueBy)).length;
+  const deliveredDiffs = commitments.filter((item) => item.status === 'delivered' && item.resolvedAt && item.dueBy).map((item) => new Date(item.dueBy).getTime() - new Date(item.resolvedAt).getTime());
+  const avg = deliveredDiffs.length ? Math.round(deliveredDiffs.reduce((a,b)=>a+b,0) / deliveredDiffs.length / 60000) : null;
+  const abs = Math.abs(avg || 0);
+  const avgDeliveryLead = avg === null ? '—' : `${Math.floor(abs/60) ? `${Math.floor(abs/60)}h ` : ''}${abs%60}m ${avg >= 0 ? 'early' : 'late'}`.trim();
+  return { commitmentsMade: made, delivered, missed, onTime, atRisk, avgDeliveryLead };
+}
+
 function readApprovalLedger(nowIso) {
   const dir = path.join(workspaceRoot, 'out', 'approvals');
   if (!exists(dir)) return [];
@@ -250,6 +291,8 @@ export function generateState(now = new Date()) {
   const memory = exists(memoryPath) ? parseMemorySections(read(memoryPath)) : { keyEvents: [], decisions: [], facts: [], priorities: [] };
   const specStats = exists(specPath) ? stat(specPath) : null;
   const usage = collectUsageRecords();
+  const commitments = readCommitments(now);
+  const commitmentStats = buildCommitmentStats(commitments);
 
   const artifacts = [
     ...(specStats ? [{
@@ -339,7 +382,7 @@ export function generateState(now = new Date()) {
     { id: 'alert-local-proof-freshness', severity: 'info', status: 'open', title: 'Deployment shape is ready, but proof must stay fresh', description: 'Railway can boot this app directly, but Mission Control credibility still depends on rebuild/run proof in the status log.', recommendedAction: 'Re-run local smoke test or deploy after meaningful data/model changes.' }
   ];
 
-  const truthItems = [...agents, ...approvals, ...usage];
+  const truthItems = [...agents, ...approvals, ...usage, ...commitments];
 
   return {
     meta: {
@@ -371,8 +414,10 @@ export function generateState(now = new Date()) {
       artifactsCreatedToday: artifacts.filter((artifact) => artifact.createdAt.startsWith(today)).length,
       schedulesExecutedToday: schedules.filter((item) => String(item.lastRunAt || '').startsWith(today)).length,
       laneSummaries,
-      dataQuality: buildDataQuality(truthItems)
+      dataQuality: buildDataQuality(truthItems),
+      commitmentStats
     },
+    commitments,
     agents,
     tasks,
     approvals,

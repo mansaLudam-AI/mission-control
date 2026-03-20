@@ -769,6 +769,126 @@ code {
   font-weight: 500;
 }
 
+
+.freshness-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.freshness-fresh { background: var(--success); }
+.freshness-aging { background: var(--warning); }
+.freshness-stale { background: var(--error); }
+
+.status-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+.status-banner--ok { background: rgba(48, 164, 108, 0.08); }
+.status-banner--attention { background: rgba(245, 166, 35, 0.08); }
+.status-banner--stalled { background: rgba(229, 72, 77, 0.08); }
+.status-banner--offline { background: var(--bg-elevated); }
+.status-banner__top,
+.status-banner__footer,
+.status-banner__meta,
+.current-work-item,
+.activity-row,
+.commitment-row,
+.delivery-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.status-banner__key { color: var(--text-secondary); font-weight: 500; }
+.status-banner__line,
+.status-banner__meta,
+.status-banner__footer { color: var(--text-primary); }
+.status-banner__age,
+.status-banner__meta { color: var(--text-secondary); }
+
+.kpi-card--info { border-left: 3px solid var(--info); }
+.kpi-card--success { border-left: 3px solid var(--success); }
+.kpi-card--warning { border-left: 3px solid var(--warning); }
+.kpi-card--error { border-left: 3px solid var(--error); }
+.kpi-card--accent { border-left: 3px solid var(--accent); }
+
+.commitment-list,
+.current-work-list,
+.activity-list,
+.compact-approval-list { display: flex; flex-direction: column; gap: 12px; }
+.commitment-row,
+.current-work-item,
+.activity-row,
+.compact-approval-item,
+.delivery-history-row {
+  border-bottom: 1px solid var(--bg-elevated);
+  padding-bottom: 12px;
+}
+.commitment-row:last-child,
+.current-work-item:last-child,
+.activity-row:last-child,
+.compact-approval-item:last-child,
+.delivery-history-row:last-child { border-bottom: none; padding-bottom: 0; }
+.commitment-row__main { min-width: 0; }
+.commitment-row__title,
+.problem-toggle__title,
+.delivery-history-row__title { display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-weight: 500; }
+.commitment-row__context,
+.compact-approval-item__meta,
+.problem-next { color: var(--text-secondary); font-size: 13px; }
+.commitment-countdown,
+.activity-row__time,
+.delivery-history-row__date,
+.delivery-history-row__time { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; color: var(--text-secondary); }
+.commitment-row--delivered .commitment-countdown { color: var(--success); }
+.commitment-row--at_risk .commitment-countdown,
+.commitment-row--at-risk .commitment-countdown { color: var(--warning); }
+.commitment-row--missed .commitment-countdown { color: var(--error); }
+
+.scorecard-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+}
+.scorecard-row--success { color: var(--success); }
+.scorecard-row--warning { color: var(--warning); }
+.scorecard-row--error { color: var(--error); }
+
+.current-work-item__dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--info); flex: 0 0 8px;
+}
+.current-work-item__title,
+.activity-row__summary { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.section-footer { margin-top: 12px; display: flex; justify-content: flex-end; }
+.link-button { background: none; border: none; color: var(--accent-text); padding: 0; cursor: pointer; font-size: 13px; }
+.link-button:hover { color: var(--text-primary); }
+
+.problem-card { padding: 10px 0; border-bottom: 1px solid var(--bg-elevated); }
+.problem-card:last-child { border-bottom: none; }
+.problem-toggle {
+  width: 100%; background: none; border: none; color: inherit; padding: 0; cursor: pointer; text-align: left;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.problem-toggle::after { content: '▾'; color: var(--text-tertiary); }
+.problem-card.expanded .problem-toggle::after { content: '▴'; }
+.problem-description,
+.problem-next { display: none; margin-top: 8px; }
+.problem-card.expanded .problem-description,
+.problem-card.expanded .problem-next { display: block; }
+
+.activity-row__time { width: 130px; flex: 0 0 130px; }
+.delivery-history { margin-top: 16px; border-top: 1px solid var(--bg-elevated); padding-top: 16px; }
+.delivery-history-row__title { flex: 1; min-width: 0; }
+
+
 /* ─── 1280px: wide desktop collapse ─── */
 @media (max-width: 1280px) {
   .kpi-grid, .agent-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -867,11 +987,6 @@ code {
   /* Table horizontal scroll */
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-  /* Problems: collapse description on mobile */
-  .problem-description, .problem-next { display: none; }
-  .problem-card.expanded .problem-description,
-  .problem-card.expanded .problem-next { display: block; }
-  .problem-card { cursor: pointer; }
 
   /* Kanban: hide all columns, show tabs */
   .kanban-board { display: block; }
@@ -936,6 +1051,7 @@ code {
 
 /* ─── 800px: grid collapse ─── */
 @media (max-width: 800px) {
+  .status-banner__meta, .status-banner__footer, .current-work-item, .activity-row, .commitment-row, .delivery-history-row { flex-direction: column; align-items: flex-start; }
   .grid-2, .grid-3, .grid-4, .approvals-grid, .agent-grid,
   .artifacts-grid, .memory-grid, .split-grid {
     grid-template-columns: 1fr;
