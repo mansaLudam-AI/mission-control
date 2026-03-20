@@ -1,0 +1,833 @@
+{
+  "meta": {
+    "title": "Mission Control",
+    "subtitle": "Operator Console v2 MVP",
+    "generatedAt": "2026-03-20T05:41:23.803Z",
+    "deployment": {
+      "mode": "node_http_server",
+      "platformReady": [
+        "Railway"
+      ],
+      "portSource": "PORT env or 3000 default"
+    },
+    "missionStatement": "Turn the agent system from a black box into an observable, steerable, cost-aware operating system.",
+    "nextActions": [
+      "Keep Mission Control grounded in real workspace data.",
+      "Add explicit cost logs next.",
+      "Use the saved proofs to reduce founder ping load."
+    ],
+    "dataSources": [
+      "work/TASKS.md",
+      "reference/mission-control-v2.1-spec.md",
+      ".openclaw/workspace-state.json",
+      "out/heartbeat/latest.json",
+      "out/status/2026-03-17-delivery-incident.md",
+      "out/status/2026-03-17-mission-control-v1.md",
+      "out/status/2026-03-17-workspace-restructure.md",
+      "out/status/2026-03-18-mission-control-truth-gap-plan.md",
+      "out/status/2026-03-18-mission-control-v2-build.md",
+      "out/status/2026-03-19-mission-control-v3.md",
+      "out/status/2026-03-20-mission-control-v4.md",
+      "out/status/phase1-cron-proof.md",
+      "out/usage/2026-03-19.jsonl",
+      "out/usage/2026-03-19.jsonl",
+      "out/usage/2026-03-19.jsonl",
+      "out/usage/2026-03-19.jsonl",
+      "out/usage/2026-03-19.jsonl"
+    ]
+  },
+  "overview": {
+    "activeAgents": 1,
+    "tasksInProgress": 2,
+    "blockedTasks": 1,
+    "pendingApprovals": 1,
+    "openAlerts": 4,
+    "spendTodayUsd": 0,
+    "artifactsCreatedToday": 1,
+    "schedulesExecutedToday": 0,
+    "laneSummaries": [
+      {
+        "lane": "now",
+        "label": "Now / Attack",
+        "count": 2
+      },
+      {
+        "lane": "next",
+        "label": "Next Up",
+        "count": 5
+      },
+      {
+        "lane": "blocked",
+        "label": "Blocked",
+        "count": 1
+      },
+      {
+        "lane": "backlog",
+        "label": "Backlog",
+        "count": 6
+      },
+      {
+        "lane": "icebox",
+        "label": "Icebox / Research",
+        "count": 1
+      },
+      {
+        "lane": "done_verified",
+        "label": "Done / Verified",
+        "count": 0
+      }
+    ],
+    "dataQuality": {
+      "verified": 9,
+      "claimed": 1,
+      "stale": 1,
+      "unknown": 0
+    },
+    "commitmentStats": {
+      "commitmentsMade": 4,
+      "delivered": 3,
+      "missed": 0,
+      "onTime": 1,
+      "atRisk": 0,
+      "avgDeliveryLead": "5h 37m late"
+    }
+  },
+  "commitments": [
+    {
+      "id": "commit-004",
+      "title": "Ship Mission Control V4 with trust engine",
+      "madeAt": "2026-03-20T05:30:00Z",
+      "dueBy": "2026-03-20T10:00:00Z",
+      "status": "in_progress",
+      "proof": null,
+      "resolvedAt": null,
+      "context": "PRD written, build starting now",
+      "_truth": {
+        "state": "verified",
+        "source": "out/commitments/active.jsonl",
+        "freshAt": "2026-03-20T05:30:00Z"
+      }
+    },
+    {
+      "id": "commit-003",
+      "title": "Connect Railway to GitHub auto-deploy",
+      "madeAt": "2026-03-19T16:00:00Z",
+      "dueBy": "2026-03-19T20:00:00Z",
+      "status": "delivered",
+      "proof": "serviceConnect via Railway GraphQL API",
+      "resolvedAt": "2026-03-19T23:43:00Z",
+      "context": "Ahmed's GitHub+Railway workflow doc",
+      "_truth": {
+        "state": "verified",
+        "source": "out/commitments/active.jsonl",
+        "freshAt": "2026-03-19T23:43:00Z"
+      }
+    },
+    {
+      "id": "commit-002",
+      "title": "Ship Mission Control V3 design rebuild",
+      "madeAt": "2026-03-19T10:00:00Z",
+      "dueBy": "2026-03-19T11:00:00Z",
+      "status": "delivered",
+      "proof": "Commit e69537c deployed to Railway",
+      "resolvedAt": "2026-03-19T10:07:00Z",
+      "context": "Promised in #oc-mission-control Discord",
+      "_truth": {
+        "state": "verified",
+        "source": "out/commitments/active.jsonl",
+        "freshAt": "2026-03-19T10:07:00Z"
+      }
+    },
+    {
+      "id": "commit-001",
+      "title": "Ship Mission Control V1 to Railway",
+      "madeAt": "2026-03-18T11:00:00Z",
+      "dueBy": "2026-03-18T18:00:00Z",
+      "status": "delivered",
+      "proof": "https://mission-control-production-7698.up.railway.app",
+      "resolvedAt": "2026-03-19T08:00:00Z",
+      "context": "Promised in #oc-mission-control Discord",
+      "_truth": {
+        "state": "verified",
+        "source": "out/commitments/active.jsonl",
+        "freshAt": "2026-03-19T08:00:00Z"
+      }
+    }
+  ],
+  "agents": [
+    {
+      "id": "agent-main",
+      "name": "Mansa",
+      "role": "Primary operator",
+      "tier": "primary",
+      "model": "unknown",
+      "provider": "workspace state",
+      "environment": "OpenClaw main",
+      "status": "active",
+      "currentTaskSummary": "v2-build",
+      "lastHeartbeatAt": "2026-03-19T08:28:16.462Z",
+      "lastSeenAt": "2026-03-19T08:28:16.462Z",
+      "health": "heartbeat_stale",
+      "recentActivityCount": 6,
+      "_truth": {
+        "state": "stale",
+        "source": "out/heartbeat/latest.json",
+        "freshAt": "2026-03-19T08:28:16.462Z"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-mission-control-truth-gap-step-1-build-usage-ledger-write-path-so-spend-becomes-real",
+      "title": "**Mission Control (Truth-Gap Step 1):** Build Usage Ledger write path so spend becomes real",
+      "lane": "now",
+      "laneLabel": "Now / Attack",
+      "status": "in_progress",
+      "priority": "urgent",
+      "project": "Mission Control",
+      "assignee": "Mansa",
+      "latestUpdate": "Tracked in now/attack commitments",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-mission-control-truth-gap-step-2-add-machine-readable-truth-confidence-metadata-to-all-data",
+      "title": "**Mission Control (Truth-Gap Step 2):** Add machine-readable `_truth` confidence metadata to all data",
+      "lane": "now",
+      "laneLabel": "Now / Attack",
+      "status": "in_progress",
+      "priority": "urgent",
+      "project": "Mission Control",
+      "assignee": "Mansa",
+      "latestUpdate": "Tracked in now/attack commitments",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-mission-control-truth-gap-step-3-implement-heartbeat-signal-for-real-time-agent-health-tracking",
+      "title": "**Mission Control (Truth-Gap Step 3):** Implement Heartbeat Signal for real-time agent health tracking",
+      "lane": "next",
+      "laneLabel": "Next Up",
+      "status": "backlog",
+      "priority": "medium",
+      "project": "Mission Control",
+      "assignee": "Mansa",
+      "latestUpdate": "Queued in next-up commitments",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-mission-control-truth-gap-step-4-build-approval-writeback-so-ui-buttons-actually-log-decisions",
+      "title": "**Mission Control (Truth-Gap Step 4):** Build Approval Writeback so UI buttons actually log decisions",
+      "lane": "next",
+      "laneLabel": "Next Up",
+      "status": "backlog",
+      "priority": "medium",
+      "project": "Mission Control",
+      "assignee": "Mansa",
+      "latestUpdate": "Queued in next-up commitments",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-mission-control-truth-gap-step-5-add-ui-confidence-badges-to-dashboard-panels",
+      "title": "**Mission Control (Truth-Gap Step 5):** Add UI Confidence Badges (🟢/🟡/🔴) to dashboard panels",
+      "lane": "next",
+      "laneLabel": "Next Up",
+      "status": "backlog",
+      "priority": "medium",
+      "project": "Mission Control",
+      "assignee": "Mansa",
+      "latestUpdate": "Queued in next-up commitments",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-mission-control-live-deploy-execute-authenticated-push-to-railway",
+      "title": "**Mission Control (Live Deploy):** Execute authenticated push to Railway",
+      "lane": "next",
+      "laneLabel": "Next Up",
+      "status": "backlog",
+      "priority": "medium",
+      "project": "Mission Control",
+      "assignee": "Mansa",
+      "latestUpdate": "Queued in next-up commitments",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-add-explicit-heartbeat-cost-logging-so-token-usage-is-measured-directly-instead-of-inferred-from-transcripts",
+      "title": "Add explicit heartbeat cost logging so token usage is measured directly instead of inferred from transcripts",
+      "lane": "next",
+      "laneLabel": "Next Up",
+      "status": "backlog",
+      "priority": "low",
+      "project": "Operations",
+      "assignee": "Mansa",
+      "latestUpdate": "Queued in next-up commitments",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-resolve-shell-facing-usr-local-bin-openclaw-version-mismatch-to-2026-3-13-live-runtime-is-2026-3-13-stale-shell-symlink-still-points-at-2026-3-12-and-requires-elevated-host-level-change",
+      "title": "Resolve shell-facing `/usr/local/bin/openclaw` version mismatch to 2026.3.13 (live runtime is 2026.3.13; stale shell symlink still points at 2026.3.12 and requires elevated host-level change)",
+      "lane": "blocked",
+      "laneLabel": "Blocked",
+      "status": "waiting_for_human",
+      "priority": "medium",
+      "project": "Operations",
+      "assignee": "Ahmed + Mansa",
+      "latestUpdate": "Tracked in blocked/waiting section",
+      "verificationState": "stale",
+      "blockedReason": "Waiting on human-side dependency or approval.",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": true,
+      "_truth": {
+        "state": "stale",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-design-smarter-async-progress-reporting-short-high-signal-updates-for-overnight-long-running-work-with-proof-of-life-meaningful-deltas-and-anti-spam-rules-not-every-20-minutes",
+      "title": "Design smarter async progress reporting: short, high-signal updates for overnight/long-running work with proof-of-life, meaningful deltas, and anti-spam rules (not every 20 minutes)",
+      "lane": "backlog",
+      "laneLabel": "Backlog",
+      "status": "backlog",
+      "priority": "low",
+      "project": "Operations",
+      "assignee": "Mansa",
+      "latestUpdate": "Tracked in backlog/opportunistic section",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-tune-background-skill-behavior-clawsec-self-improvement-for-low-noise-high-value-operation",
+      "title": "Tune background skill behavior (ClawSec + self-improvement) for low-noise, high-value operation",
+      "lane": "backlog",
+      "laneLabel": "Backlog",
+      "status": "backlog",
+      "priority": "low",
+      "project": "Operations",
+      "assignee": "Mansa",
+      "latestUpdate": "Tracked in backlog/opportunistic section",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-kick-off-first-revenue-generating-business-after-phase-2-activation",
+      "title": "Kick off first revenue-generating business after Phase 2 activation",
+      "lane": "backlog",
+      "laneLabel": "Backlog",
+      "status": "backlog",
+      "priority": "low",
+      "project": "Revenue",
+      "assignee": "Mansa",
+      "latestUpdate": "Tracked in backlog/opportunistic section",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-clawsec-improvement-add-skill-quarantine-auto-block-capability-for-malicious-flags",
+      "title": "**ClawSec Improvement:** Add skill \"quarantine/auto-block\" capability for malicious flags",
+      "lane": "backlog",
+      "laneLabel": "Backlog",
+      "status": "backlog",
+      "priority": "low",
+      "project": "Operations",
+      "assignee": "Mansa",
+      "latestUpdate": "Tracked in backlog/opportunistic section",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-evaluate-whether-a-separate-discord-reporter-bot-identity-is-worth-the-extra-operational-complexity-over-the-current-reporting-lane",
+      "title": "Evaluate whether a separate Discord reporter bot identity is worth the extra operational complexity over the current reporting lane",
+      "lane": "backlog",
+      "laneLabel": "Backlog",
+      "status": "backlog",
+      "priority": "low",
+      "project": "Operations",
+      "assignee": "Mansa",
+      "latestUpdate": "Tracked in backlog/opportunistic section",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-evaluate-model-usage-skill-for-replacement-of-manual-usage-ledger-logic",
+      "title": "Evaluate `model-usage` skill for replacement of manual usage ledger logic",
+      "lane": "backlog",
+      "laneLabel": "Backlog",
+      "status": "backlog",
+      "priority": "low",
+      "project": "Operations",
+      "assignee": "Mansa",
+      "latestUpdate": "Tracked in backlog/opportunistic section",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    },
+    {
+      "id": "task-future-mission-control-enhancement-render-workspace-backed-priority-lanes-as-a-kanban-board-surface",
+      "title": "Future Mission Control enhancement: render workspace-backed priority lanes as a Kanban/board surface",
+      "lane": "icebox",
+      "laneLabel": "Icebox / Research",
+      "status": "backlog",
+      "priority": "medium",
+      "project": "Mission Control",
+      "assignee": "Mansa",
+      "latestUpdate": "Tracked in icebox/research section",
+      "verificationState": "claimed",
+      "blockedReason": "",
+      "sourceRef": "work/TASKS.md",
+      "approvalRequired": false,
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    }
+  ],
+  "approvals": [
+    {
+      "id": "approval-resolve-shell-facing-usr-local-bin-openclaw-version-mismatch-to-2026-3-13-live-runtime-is-2026-3-13-stale-shell-symlink-still-points-at-2026-3-12-and-requires-elevated-host-level-change",
+      "title": "Resolve shell-facing `/usr/local/bin/openclaw` version mismatch to 2026.3.13 (live runtime is 2026.3.13; stale shell symlink still points at 2026.3.12 and requires elevated host-level change)",
+      "urgency": "medium",
+      "status": "pending",
+      "riskCategory": "config_change",
+      "requestedBy": "Ahmed + Mansa",
+      "requestedAt": "2026-03-20T05:41:23.803Z",
+      "reason": "Derived from work/TASKS.md waiting-for-human state.",
+      "consequence": "Work remains stalled until the human-side dependency is cleared.",
+      "_truth": {
+        "state": "claimed",
+        "source": "work/TASKS.md",
+        "freshAt": null
+      }
+    }
+  ],
+  "events": [
+    {
+      "timestamp": "2026-03-17T22:10:49.572Z",
+      "actor": "Mansa",
+      "type": "status_file_updated",
+      "entity": "artifact/phase1-cron-proof.md",
+      "summary": "phase1-cron-proof.md",
+      "status": "success",
+      "verificationState": "verified"
+    },
+    {
+      "timestamp": "2026-03-18T08:47:59.028Z",
+      "actor": "Mansa",
+      "type": "status_file_updated",
+      "entity": "artifact/2026-03-17-workspace-restructure.md",
+      "summary": "2026-03-17-workspace-restructure.md",
+      "status": "success",
+      "verificationState": "verified"
+    },
+    {
+      "timestamp": "2026-03-18T16:44:14.837Z",
+      "actor": "Mansa",
+      "type": "status_file_updated",
+      "entity": "artifact/2026-03-18-mission-control-truth-gap-plan.md",
+      "summary": "2026-03-18-mission-control-truth-gap-plan.md",
+      "status": "success",
+      "verificationState": "verified"
+    },
+    {
+      "timestamp": "2026-03-19T08:04:19.821Z",
+      "actor": "Mansa",
+      "type": "status_file_updated",
+      "entity": "artifact/2026-03-18-mission-control-v2-build.md",
+      "summary": "2026-03-18-mission-control-v2-build.md",
+      "status": "success",
+      "verificationState": "verified"
+    },
+    {
+      "timestamp": "2026-03-19T09:57:39.092Z",
+      "actor": "Mansa",
+      "type": "status_file_updated",
+      "entity": "artifact/2026-03-19-mission-control-v3.md",
+      "summary": "2026-03-19-mission-control-v3.md",
+      "status": "success",
+      "verificationState": "verified"
+    },
+    {
+      "timestamp": "2026-03-20T05:36:11.410Z",
+      "actor": "Mansa",
+      "type": "status_file_updated",
+      "entity": "artifact/2026-03-20-mission-control-v4.md",
+      "summary": "2026-03-20-mission-control-v4.md",
+      "status": "success",
+      "verificationState": "verified"
+    }
+  ],
+  "alerts": [
+    {
+      "id": "alert-heartbeat-cost-logging",
+      "severity": "warning",
+      "status": "open",
+      "title": "Heartbeat cost logging is still not explicit",
+      "description": "The active task ledger still shows heartbeat cost logging as unfinished, so Usage / Cost cannot yet claim full truth.",
+      "recommendedAction": "Ship direct cost logging and swap inferred rows for real records."
+    },
+    {
+      "id": "alert-first-revenue-not-started",
+      "severity": "critical",
+      "status": "open",
+      "title": "First revenue push is still pending",
+      "description": "The canonical task ledger still shows the first revenue-generating business as an open commitment.",
+      "recommendedAction": "Use Mission Control to reduce operator friction, then move immediately into execution that can make money."
+    },
+    {
+      "id": "alert-usage-ledger-missing",
+      "severity": "info",
+      "status": "open",
+      "title": "Usage ledger is present",
+      "description": "Usage / Cost now reads from real ledger files on disk.",
+      "recommendedAction": "Keep writing structured usage logs so costs stay grounded."
+    },
+    {
+      "id": "alert-local-proof-freshness",
+      "severity": "info",
+      "status": "open",
+      "title": "Deployment shape is ready, but proof must stay fresh",
+      "description": "Railway can boot this app directly, but Mission Control credibility still depends on rebuild/run proof in the status log.",
+      "recommendedAction": "Re-run local smoke test or deploy after meaningful data/model changes."
+    }
+  ],
+  "schedules": [
+    {
+      "name": "nightly-extraction",
+      "humanReadable": "Every day at 2:00 AM Pacific",
+      "status": "active",
+      "nextRunAt": "2026-03-19T09:00:00Z",
+      "lastRunAt": "2026-03-18T09:00:00Z",
+      "lastRunStatus": "success",
+      "ownerAgent": "Nightly Extraction"
+    },
+    {
+      "name": "weekly-consolidation",
+      "humanReadable": "Sunday at 9:00 AM Pacific",
+      "status": "active",
+      "nextRunAt": "2026-03-22T16:00:00Z",
+      "lastRunAt": "2026-03-17T21:45:00Z",
+      "lastRunStatus": "success",
+      "ownerAgent": "Mansa"
+    },
+    {
+      "name": "heartbeat-check",
+      "humanReadable": "Lightweight monitoring cadence",
+      "status": "active",
+      "nextRunAt": null,
+      "lastRunAt": "2026-03-19T08:28:16.462Z",
+      "lastRunStatus": "warning",
+      "ownerAgent": "Heartbeat"
+    }
+  ],
+  "usage": [
+    {
+      "id": "usage-1",
+      "agent": "Mansa",
+      "model": "anthropic/claude-sonnet-4-6",
+      "provider": "anthropic",
+      "operationType": "conversation",
+      "estimatedCostUsd": 0.075,
+      "durationMs": 45000,
+      "success": true,
+      "note": "railway-auth-debug",
+      "timestamp": "2026-03-19T01:00:00.000Z",
+      "sourcePath": "out/usage/2026-03-19.jsonl",
+      "session": "main",
+      "inputTokens": 18000,
+      "outputTokens": 4200,
+      "_truth": {
+        "state": "verified",
+        "source": "out/usage/2026-03-19.jsonl",
+        "freshAt": "2026-03-19T01:00:00.000Z"
+      }
+    },
+    {
+      "id": "usage-2",
+      "agent": "Mansa",
+      "model": "openai-codex/gpt-5.4",
+      "provider": "openai-codex",
+      "operationType": "conversation",
+      "estimatedCostUsd": 0.031,
+      "durationMs": 22000,
+      "success": true,
+      "note": "gateway-diagnostics",
+      "timestamp": "2026-03-19T01:30:00.000Z",
+      "sourcePath": "out/usage/2026-03-19.jsonl",
+      "session": "main",
+      "inputTokens": 12000,
+      "outputTokens": 2800,
+      "_truth": {
+        "state": "verified",
+        "source": "out/usage/2026-03-19.jsonl",
+        "freshAt": "2026-03-19T01:30:00.000Z"
+      }
+    },
+    {
+      "id": "usage-3",
+      "agent": "Mansa",
+      "model": "anthropic/claude-opus-4-6",
+      "provider": "anthropic",
+      "operationType": "conversation",
+      "estimatedCostUsd": 0.098,
+      "durationMs": 18000,
+      "success": true,
+      "note": "railway-research",
+      "timestamp": "2026-03-19T02:00:00.000Z",
+      "sourcePath": "out/usage/2026-03-19.jsonl",
+      "session": "main",
+      "inputTokens": 8000,
+      "outputTokens": 1500,
+      "_truth": {
+        "state": "verified",
+        "source": "out/usage/2026-03-19.jsonl",
+        "freshAt": "2026-03-19T02:00:00.000Z"
+      }
+    },
+    {
+      "id": "usage-4",
+      "agent": "Mansa",
+      "model": "anthropic/claude-sonnet-4-6",
+      "provider": "anthropic",
+      "operationType": "conversation",
+      "estimatedCostUsd": 0.091,
+      "durationMs": 35000,
+      "success": true,
+      "note": "mission-control-deploy",
+      "timestamp": "2026-03-19T03:00:00.000Z",
+      "sourcePath": "out/usage/2026-03-19.jsonl",
+      "session": "main",
+      "inputTokens": 22000,
+      "outputTokens": 5000,
+      "_truth": {
+        "state": "verified",
+        "source": "out/usage/2026-03-19.jsonl",
+        "freshAt": "2026-03-19T03:00:00.000Z"
+      }
+    },
+    {
+      "id": "usage-5",
+      "agent": "Mansa",
+      "model": "anthropic/claude-sonnet-4-6",
+      "provider": "anthropic",
+      "operationType": "subagent",
+      "estimatedCostUsd": 0.135,
+      "durationMs": 120000,
+      "success": true,
+      "note": "mission-control-v2-build",
+      "timestamp": "2026-03-19T04:00:00.000Z",
+      "sourcePath": "out/usage/2026-03-19.jsonl",
+      "session": "mission-control-v2",
+      "inputTokens": 25000,
+      "outputTokens": 8000,
+      "_truth": {
+        "state": "verified",
+        "source": "out/usage/2026-03-19.jsonl",
+        "freshAt": "2026-03-19T04:00:00.000Z"
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "title": "2026-03-20-mission-control-v4",
+      "category": "status",
+      "format": "md",
+      "createdAt": "2026-03-20T05:36:11.410Z",
+      "project": "Mission Control",
+      "creator": "Mansa",
+      "path": "out/status/2026-03-20-mission-control-v4.md"
+    },
+    {
+      "title": "2026-03-19-mission-control-v3",
+      "category": "status",
+      "format": "md",
+      "createdAt": "2026-03-19T09:57:39.092Z",
+      "project": "Mission Control",
+      "creator": "Mansa",
+      "path": "out/status/2026-03-19-mission-control-v3.md"
+    },
+    {
+      "title": "2026-03-18-mission-control-v2-build",
+      "category": "status",
+      "format": "md",
+      "createdAt": "2026-03-19T08:04:19.821Z",
+      "project": "Mission Control",
+      "creator": "Mansa",
+      "path": "out/status/2026-03-18-mission-control-v2-build.md"
+    },
+    {
+      "title": "Mission Control v2.1 Spec",
+      "category": "spec",
+      "format": "md",
+      "createdAt": "2026-03-18T20:50:02.736Z",
+      "project": "Mission Control",
+      "creator": "Mansa",
+      "path": "reference/mission-control-v2.1-spec.md"
+    },
+    {
+      "title": "2026-03-18-mission-control-truth-gap-plan",
+      "category": "status",
+      "format": "md",
+      "createdAt": "2026-03-18T16:44:14.837Z",
+      "project": "Mission Control",
+      "creator": "Mansa",
+      "path": "out/status/2026-03-18-mission-control-truth-gap-plan.md"
+    },
+    {
+      "title": "2026-03-17-workspace-restructure",
+      "category": "status",
+      "format": "md",
+      "createdAt": "2026-03-18T08:47:59.028Z",
+      "project": "Operations",
+      "creator": "Mansa",
+      "path": "out/status/2026-03-17-workspace-restructure.md"
+    },
+    {
+      "title": "phase1-cron-proof",
+      "category": "proof",
+      "format": "md",
+      "createdAt": "2026-03-17T22:10:49.572Z",
+      "project": "Operations",
+      "creator": "Mansa",
+      "path": "out/status/phase1-cron-proof.md"
+    },
+    {
+      "title": "2026-03-17-mission-control-v1",
+      "category": "status",
+      "format": "md",
+      "createdAt": "2026-03-17T14:14:46.531Z",
+      "project": "Mission Control",
+      "creator": "Mansa",
+      "path": "out/status/2026-03-17-mission-control-v1.md"
+    },
+    {
+      "title": "2026-03-17-delivery-incident",
+      "category": "incident",
+      "format": "md",
+      "createdAt": "2026-03-17T13:11:10.014Z",
+      "project": "Operations",
+      "creator": "Mansa",
+      "path": "out/status/2026-03-17-delivery-incident.md"
+    }
+  ],
+  "truthGaps": {
+    "usageCost": "direct_real_ledger",
+    "approvals": "task_derived",
+    "agentHealth": "heartbeat_backed",
+    "scheduleFreshness": "partially_recorded"
+  },
+  "memory": {
+    "date": "2026-03-20",
+    "keyEvents": [],
+    "decisions": [],
+    "facts": [],
+    "relatedFiles": []
+  },
+  "spec": {
+    "title": "Mission Control v2.1 — Operator Console Spec",
+    "status": "Draft v2.1",
+    "path": "reference/mission-control-v2.1-spec.md",
+    "focus": [
+      "Overview",
+      "Events",
+      "Problems / Alerts",
+      "Approvals",
+      "Usage / Cost"
+    ]
+  }
+}
