@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#0A0A0B" />
     <title>Mission Control</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -31,29 +34,49 @@
             <span>Mansa</span>
           </div>
           <button id="refresh-data" class="btn btn-secondary sidebar-refresh" type="button">Refresh</button>
+
+          <!-- Desktop command bar -->
+          <div class="sidebar-command-bar">
+            <form id="command-bar-form-desktop" autocomplete="off">
+              <input class="v5-command-input" type="text" placeholder="Tell Mansa something..." id="command-bar-input-desktop" />
+              <button class="v5-command-send" type="submit">Send</button>
+              <div class="v5-command-feedback" id="command-bar-feedback-desktop"></div>
+            </form>
+          </div>
         </div>
       </aside>
 
       <main class="main">
+        <div class="v5-pull-indicator" id="pull-refresh-indicator">Refreshing...</div>
+
         <header class="header-bar">
           <div class="header-left">
             <button class="hamburger-btn" id="hamburger-btn" type="button" aria-label="Open navigation">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2" y="4" width="16" height="2" rx="1" fill="currentColor"/><rect x="2" y="9" width="16" height="2" rx="1" fill="currentColor"/><rect x="2" y="14" width="16" height="2" rx="1" fill="currentColor"/></svg>
             </button>
             <div class="header-tagline">OBSERVABLE. STEERABLE. COST-AWARE.</div>
-            <h1 class="header-title" id="view-title">Overview</h1>
+            <h1 class="header-title" id="view-title">Home</h1>
           </div>
 
           <div class="header-right">
             <span class="header-pill" id="generated-at">Generated —</span>
             <span class="header-pill" id="last-refreshed">Last refreshed —</span>
-            <span class="header-pill header-pill-alert" id="open-alerts-pill">0 open alerts</span>
+            <span class="header-pill header-pill-alert" id="open-alerts-pill">0 alerts</span>
           </div>
         </header>
 
         <section class="content-wrap">
           <div id="app" class="view fade-in"></div>
         </section>
+
+        <!-- Mobile command bar (sticky bottom) -->
+        <div class="v5-command-bar v5-command-bar-mobile">
+          <form id="command-bar-form" autocomplete="off" style="display:flex;gap:8px;flex:1;align-items:center;">
+            <input class="v5-command-input" type="text" placeholder="Tell Mansa something..." id="command-bar-input" />
+            <button class="v5-command-send" type="submit">Send</button>
+          </form>
+          <div class="v5-command-feedback" id="command-bar-feedback"></div>
+        </div>
       </main>
     </div>
 
