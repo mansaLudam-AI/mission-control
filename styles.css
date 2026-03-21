@@ -933,7 +933,8 @@ code {
 .nudge-error { animation: nudgeShake 300ms ease; }
 
 /* ── Problem Actions ── */
-.problem-actions { display: flex; gap: 8px; margin-top: 8px; }
+.problem-actions { display: none; gap: 8px; margin-top: 8px; }
+.problem-card.expanded .problem-actions { display: flex; }
 
 /* ── Approval Notes ── */
 .approval-notes-toggle { margin-top: 8px; }
