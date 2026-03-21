@@ -48,6 +48,10 @@ function escapeHtml(value = '') {
     .replaceAll("'", '&#39;');
 }
 
+function stripMarkdown(value = '') {
+  return String(value).replace(/\*\*/g, '').replace(/\*/g, '').replace(/__/g, '').replace(/_/g, ' ').replace(/`/g, '').replace(/#+\s*/g, '').trim();
+}
+
 function humanize(value = '') {
   return String(value).replaceAll('_', ' ').replaceAll('/', ' ').replace(/\s+/g, ' ').trim();
 }
@@ -230,7 +234,7 @@ function renderCommitments() {
         ${commitments.map((item) => `
           <div class="commitment-row commitment-row--${escapeHtml(item.status || 'in_progress')}" data-commitment-due-by="${escapeHtml(item.dueBy || '')}" data-commitment-status="${escapeHtml(item.status || 'in_progress')}" data-commitment-resolved-at="${escapeHtml(item.resolvedAt || '')}">
             <div class="commitment-row__main">
-              <div class="commitment-row__title">${badge(item.status || 'in_progress')}${escapeHtml(item.title || 'Untitled commitment')}</div>
+              <div class="commitment-row__title">${badge(item.status || 'in_progress')}${escapeHtml(stripMarkdown(item.title) || 'Untitled commitment')}</div>
               <div class="commitment-row__context">${escapeHtml(item.context || 'No context recorded')}</div>
             </div>
             <div class="commitment-countdown">${escapeHtml(getCommitmentTimeContext(item))}</div>
@@ -285,7 +289,7 @@ function renderCurrentWork() {
         ${tasks.length ? tasks.map((task) => `
           <div class="current-work-item">
             <span class="current-work-item__dot"></span>
-            <span class="current-work-item__title">${escapeHtml(task.title || 'Untitled task')}</span>
+            <span class="current-work-item__title">${escapeHtml(stripMarkdown(task.title) || 'Untitled task')}</span>
             <span>${badge(task.status || 'in_progress')}</span>
             <span>${badge(task.project || 'general')}</span>
             ${renderNudgeButton('status_request', task.title, 'Ask for update')}
@@ -309,7 +313,7 @@ function renderCompactProblems() {
         ${problems.length ? problems.filter((p) => !isSnoozed(p.title)).map((problem, index) => `
           <div class="problem-card problem-item${index === 0 ? '' : ''}">
             <button class="problem-toggle" type="button">
-              <span class="problem-toggle__title">${badge(problem.severity || problem.status || 'info')}${escapeHtml(problem.title || 'Untitled problem')}</span>
+              <span class="problem-toggle__title">${badge(problem.severity || problem.status || 'info')}${escapeHtml(stripMarkdown(problem.title) || 'Untitled problem')}</span>
             </button>
             <div class="problem-description">${escapeHtml(problem.description || 'No details available.')}</div>
             <div class="problem-next">→ Next: ${escapeHtml(problem.recommendedAction || 'Review the state and respond.')}</div>
@@ -385,7 +389,15 @@ function renderSummaryCard() {
       </div>
     </section>`;
   }
-  if (!aiSummary) return '<div id="ai-summary-card"></div>';
+  if (!aiSummary) {
+    return `<section class="card ai-summary-card ai-summary-card--loading" id="ai-summary-card">
+      <div class="ai-summary-skeleton">
+        <div class="skeleton-line skeleton-line--short"></div>
+        <div class="skeleton-line skeleton-line--long"></div>
+        <div class="skeleton-line skeleton-line--medium"></div>
+      </div>
+    </section>`;
+  }
   const s = aiSummary;
   const statusLabel = { ok: 'All systems nominal', attention: 'Needs attention', stalled: 'Stalled', offline: 'Offline' }[s.status] || 'Unknown';
   const ageMs = s.generatedAt ? Date.now() - new Date(s.generatedAt).getTime() : 0;
@@ -510,7 +522,7 @@ function renderWork() {
       <article class="card lane-column kanban-column${lane.key === activeKanbanLane ? ' active' : ''}" data-lane="${escapeHtml(lane.key)}">
         <div class="card-header"><h3>${escapeHtml(lane.label)}</h3><span class="count-pill">${lane.count}</span></div>
         <div class="task-stack">${lane.tasks.length ? lane.tasks.map((task) => `
-          <article class="task-card card-interactive"><h4 class="task-title">${escapeHtml(humanize(task.title))}</h4><div class="badge-row">${badge(task.status || 'unknown')}${badge(task.priority || 'default')}${badge(task.project || 'general')}${task.approvalRequired ? badge('waiting_for_human') : ''}</div><div class="list-item-copy">${escapeHtml(task.latestUpdate || 'No update recorded.')}</div><div class="source-ref">${escapeHtml(task.sourceRef || 'work/TASKS.md')}</div></article>`).join('') : '<div class="empty-state empty-state-compact"><div class="empty-copy">No items</div></div>'}</div>
+          <article class="task-card card-interactive"><h4 class="task-title">${escapeHtml(stripMarkdown(task.title))}</h4><div class="badge-row">${badge(task.status || 'unknown')}${badge(task.priority || 'default')}${badge(task.project || 'general')}${task.approvalRequired ? badge('waiting_for_human') : ''}</div><div class="list-item-copy">${escapeHtml(task.latestUpdate || 'No update recorded.')}</div><div class="source-ref">${escapeHtml(task.sourceRef || 'work/TASKS.md')}</div></article>`).join('') : '<div class="empty-state empty-state-compact"><div class="empty-copy">No items</div></div>'}</div>
       </article>`).join('')}
     </section>`;
 }
@@ -535,7 +547,7 @@ function renderDeliveryHistory() {
   const items = [...(state?.commitments || [])].filter((item) => ['delivered', 'missed'].includes(item.status)).sort((a, b) => new Date(b.madeAt || 0) - new Date(a.madeAt || 0));
   if (!items.length) return '';
   return `
-    <div class="delivery-history"><div class="memory-block-title">Delivery History</div>${items.map((item) => `<div class="delivery-history-row"><span class="delivery-history-row__date">${escapeHtml(formatDateTime(item.madeAt))}</span><span class="delivery-history-row__title">${badge(item.status || 'in_progress')}${escapeHtml(item.title || 'Untitled commitment')}</span><span class="delivery-history-row__time">${escapeHtml(getCommitmentTimeContext(item))}</span></div>`).join('')}</div>`;
+    <div class="delivery-history"><div class="memory-block-title">Delivery History</div>${items.map((item) => `<div class="delivery-history-row"><span class="delivery-history-row__date">${escapeHtml(formatDateTime(item.madeAt))}</span><span class="delivery-history-row__title">${badge(item.status || 'in_progress')}${escapeHtml(stripMarkdown(item.title) || 'Untitled commitment')}</span><span class="delivery-history-row__time">${escapeHtml(getCommitmentTimeContext(item))}</span></div>`).join('')}</div>`;
 }
 
 function renderAgents() {

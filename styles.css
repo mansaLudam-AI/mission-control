@@ -85,6 +85,7 @@ code {
 
 .app-shell {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .sidebar {
@@ -285,6 +286,7 @@ code {
 .content-wrap {
   width: 100%;
   padding: 24px;
+  overflow-x: hidden;
 }
 
 .view {
@@ -292,6 +294,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  overflow-x: hidden;
 }
 
 .grid {
