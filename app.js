@@ -410,6 +410,9 @@ async function fetchSummary(digest = false) {
     } catch { /* digest fetch failed silently */ }
     return;
   }
+  // Skip if already loading or state hasn't changed since last fetch
+  if (aiSummaryLoading) return;
+  if (aiSummary && aiSummary.lastStateUpdate === state?.meta?.generatedAt) return;
   aiSummaryLoading = true;
   const el = document.getElementById('ai-summary-card');
   if (el && !aiSummary) el.outerHTML = renderSummaryCard();
