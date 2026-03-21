@@ -18,6 +18,13 @@ const MC_AI_MODEL = process.env.MC_AI_MODEL || 'gemini-2.5-flash';
 const MC_AI_PROVIDER = process.env.MC_AI_PROVIDER || 'google';
 const MC_NUDGE_ENDPOINT = process.env.MC_NUDGE_ENDPOINT || null;
 const SUMMARY_TTL_MS = 5 * 60 * 1000;
+
+// Provider usage API keys (separate from chat completion keys)
+const ANTHROPIC_ADMIN_KEY = process.env.MC_ANTHROPIC_ADMIN_KEY || null;
+const OPENAI_ADMIN_KEY = process.env.MC_OPENAI_ADMIN_KEY || null;
+const OPENROUTER_API_KEY = process.env.MC_OPENROUTER_API_KEY || null;
+const USAGE_POLL_TTL_MS = 5 * 60 * 1000;
+let usageCache = { data: null, fetchedAt: 0 };
 let pushedState = null;
 let pushedAt = 0;
 let summaryCache = { summary: null, digest: null };
@@ -294,6 +301,150 @@ async function handleSummary(req, res, url) {
   sendJson(res, 200, result);
 }
 
+/* ── Provider Usage API Polling ── */
+function httpsGetJson(hostname, urlPath, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname, path: urlPath, method: 'GET', timeout: 15000,
+      headers: { 'Accept': 'application/json', ...headers }
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+        catch { reject(new Error('Invalid JSON response')); }
+      });
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Usage API request timeout')); });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function fetchAnthropicUsage() {
+  if (!ANTHROPIC_ADMIN_KEY) return null;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const data = await httpsGetJson('api.anthropic.com', `/v1/organizations/usage?start_date=${today}&end_date=${today}`, {
+      'x-api-key': ANTHROPIC_ADMIN_KEY,
+      'anthropic-version': '2023-06-01'
+    });
+    // Normalize to common format
+    const totalCost = data?.usage?.reduce((sum, entry) => sum + (entry.cost_usd || 0), 0) || 0;
+    const totalInputTokens = data?.usage?.reduce((sum, entry) => sum + (entry.input_tokens || 0), 0) || 0;
+    const totalOutputTokens = data?.usage?.reduce((sum, entry) => sum + (entry.output_tokens || 0), 0) || 0;
+    return {
+      provider: 'anthropic',
+      costUsd: totalCost,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      models: data?.usage?.map(e => ({ model: e.model, costUsd: e.cost_usd || 0, inputTokens: e.input_tokens || 0, outputTokens: e.output_tokens || 0 })) || [],
+      fetchedAt: new Date().toISOString(),
+      raw: data
+    };
+  } catch (err) {
+    console.error('Anthropic usage fetch error:', err.message);
+    return { provider: 'anthropic', error: err.message, fetchedAt: new Date().toISOString() };
+  }
+}
+
+async function fetchOpenAIUsage() {
+  if (!OPENAI_ADMIN_KEY) return null;
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const dayStart = now - (now % 86400);
+    const data = await httpsGetJson('api.openai.com', `/v1/organization/usage/completions?start_time=${dayStart}&limit=100`, {
+      'Authorization': `Bearer ${OPENAI_ADMIN_KEY}`
+    });
+    const buckets = data?.data || [];
+    let totalCost = 0, totalInput = 0, totalOutput = 0;
+    const modelMap = {};
+    for (const bucket of buckets) {
+      for (const result of (bucket.results || [])) {
+        const cost = (result.input_tokens || 0) * 0.000003 + (result.output_tokens || 0) * 0.000015;  // rough estimate
+        totalCost += cost;
+        totalInput += result.input_tokens || 0;
+        totalOutput += result.output_tokens || 0;
+        const m = result.model || 'unknown';
+        if (!modelMap[m]) modelMap[m] = { model: m, costUsd: 0, inputTokens: 0, outputTokens: 0 };
+        modelMap[m].costUsd += cost;
+        modelMap[m].inputTokens += result.input_tokens || 0;
+        modelMap[m].outputTokens += result.output_tokens || 0;
+      }
+    }
+    return {
+      provider: 'openai',
+      costUsd: totalCost,
+      inputTokens: totalInput,
+      outputTokens: totalOutput,
+      models: Object.values(modelMap),
+      fetchedAt: new Date().toISOString(),
+      raw: data
+    };
+  } catch (err) {
+    console.error('OpenAI usage fetch error:', err.message);
+    return { provider: 'openai', error: err.message, fetchedAt: new Date().toISOString() };
+  }
+}
+
+async function fetchOpenRouterUsage() {
+  if (!OPENROUTER_API_KEY) return null;
+  try {
+    const keyData = await httpsGetJson('openrouter.ai', '/api/v1/auth/key', {
+      'Authorization': `Bearer ${OPENROUTER_API_KEY}`
+    });
+    const creditsUsed = keyData?.data?.usage || 0;
+    const creditsLimit = keyData?.data?.limit || null;
+    return {
+      provider: 'openrouter',
+      costUsd: creditsUsed,
+      creditsLimit,
+      inputTokens: 0,
+      outputTokens: 0,
+      models: [],
+      fetchedAt: new Date().toISOString(),
+      raw: keyData
+    };
+  } catch (err) {
+    console.error('OpenRouter usage fetch error:', err.message);
+    return { provider: 'openrouter', error: err.message, fetchedAt: new Date().toISOString() };
+  }
+}
+
+async function getProviderUsage() {
+  if (usageCache.data && Date.now() - usageCache.fetchedAt < USAGE_POLL_TTL_MS) {
+    return usageCache.data;
+  }
+  const results = await Promise.allSettled([
+    fetchAnthropicUsage(),
+    fetchOpenAIUsage(),
+    fetchOpenRouterUsage()
+  ]);
+  const providers = results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
+  const totalCost = providers.reduce((sum, p) => sum + (p.costUsd || 0), 0);
+  const totalInput = providers.reduce((sum, p) => sum + (p.inputTokens || 0), 0);
+  const totalOutput = providers.reduce((sum, p) => sum + (p.outputTokens || 0), 0);
+  const data = {
+    totalCostUsd: totalCost,
+    totalInputTokens: totalInput,
+    totalOutputTokens: totalOutput,
+    providers,
+    configuredProviders: [
+      ANTHROPIC_ADMIN_KEY ? 'anthropic' : null,
+      OPENAI_ADMIN_KEY ? 'openai' : null,
+      OPENROUTER_API_KEY ? 'openrouter' : null
+    ].filter(Boolean),
+    fetchedAt: new Date().toISOString()
+  };
+  usageCache = { data, fetchedAt: Date.now() };
+  return data;
+}
+
+async function handleUsageLive(req, res) {
+  const data = await getProviderUsage();
+  sendJson(res, 200, data);
+}
+
 async function handleNudge(req, res) {
   const raw = await readBody(req);
   let body = {};
@@ -346,15 +497,27 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/state' && req.method === 'POST') return handleStatePush(req, res);
   if (url.pathname === '/api/summary' && req.method === 'GET') return handleSummary(req, res, url);
   if (url.pathname === '/api/nudge' && req.method === 'POST') return handleNudge(req, res);
+  if (url.pathname === '/api/usage/live' && req.method === 'GET') return handleUsageLive(req, res);
 
   const approvalMatch = /^\/api\/approvals\/([^/]+)\/resolve$/.exec(url.pathname);
   if (req.method === 'POST' && approvalMatch) return handleApprovalResolve(req, res, decodeURIComponent(approvalMatch[1]));
 
+  // Static file serving
   const requested = url.pathname === '/' ? '/index.html' : url.pathname;
   const safePath = path.normalize(requested).replace(/^([.][.][/\\])+/, '');
   const filePath = path.join(__dirname, safePath);
   if (!filePath.startsWith(__dirname)) return sendJson(res, 403, { error: 'forbidden' });
-  serveFile(res, filePath);
+
+  // If the file exists, serve it directly
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    return serveFile(res, filePath);
+  }
+
+  // Path-based deep link catch-all: serve index.html for any unmatched route
+  // This enables clean URLs like /task/deploy-v5, /approval/cost-cap, /work, etc.
+  const indexPath = path.join(__dirname, 'index.html');
+  if (fs.existsSync(indexPath)) return serveFile(res, indexPath);
+  sendJson(res, 404, { error: 'not_found' });
 });
 
 server.listen(port, () => console.log(`Mission Control listening on http://0.0.0.0:${port}`));
