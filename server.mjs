@@ -24,6 +24,13 @@ const ANTHROPIC_ADMIN_KEY = process.env.MC_ANTHROPIC_ADMIN_KEY || null;
 const OPENAI_ADMIN_KEY = process.env.MC_OPENAI_ADMIN_KEY || null;
 const OPENROUTER_API_KEY = process.env.MC_OPENROUTER_API_KEY || null;
 const USAGE_POLL_TTL_MS = 5 * 60 * 1000;
+// LLM Proxy configuration
+const MC_PROXY_ENABLED = process.env.MC_PROXY_ENABLED === 'true';
+const MC_PROXY_KEY_ANTHROPIC = process.env.MC_PROXY_KEY_ANTHROPIC || null;
+const MC_PROXY_KEY_OPENAI = process.env.MC_PROXY_KEY_OPENAI || null;
+const MC_PROXY_KEY_GOOGLE = process.env.MC_PROXY_KEY_GOOGLE || null;
+const MC_PROXY_KEY_OPENROUTER = process.env.MC_PROXY_KEY_OPENROUTER || null;
+const PROXY_TIMEOUT_MS = 120_000; // 2 minutes for LLM calls
 let usageCache = { data: null, fetchedAt: 0 };
 let pushedState = null;
 let pushedAt = 0;
@@ -133,6 +140,168 @@ const AI_PROVIDERS = {
     extraHeaders: { 'anthropic-version': '2023-06-01' }
   }
 };
+
+/* ── LLM Proxy Architecture ── */
+const PROXY_PROVIDERS = {
+  anthropic:  { hostname: 'api.anthropic.com' },
+  openai:     { hostname: 'api.openai.com' },
+  google:     { hostname: 'generativelanguage.googleapis.com' },
+  openrouter: { hostname: 'openrouter.ai' },
+};
+
+const PROXY_KEY_MAP = {
+  anthropic: MC_PROXY_KEY_ANTHROPIC,
+  openai: MC_PROXY_KEY_OPENAI,
+  google: MC_PROXY_KEY_GOOGLE,
+  openrouter: MC_PROXY_KEY_OPENROUTER,
+};
+
+const TOKEN_EXTRACTORS = {
+  anthropic:  (json) => ({ inputTokens: json?.usage?.input_tokens || 0, outputTokens: json?.usage?.output_tokens || 0, model: json?.model || 'unknown' }),
+  openai:     (json) => ({ inputTokens: json?.usage?.prompt_tokens || 0, outputTokens: json?.usage?.completion_tokens || 0, model: json?.model || 'unknown' }),
+  google:     (json) => ({ inputTokens: json?.usageMetadata?.promptTokenCount || 0, outputTokens: json?.usageMetadata?.candidatesTokenCount || 0, model: 'unknown' }),
+  openrouter: (json) => ({ inputTokens: json?.usage?.prompt_tokens || 0, outputTokens: json?.usage?.completion_tokens || 0, model: json?.model || 'unknown' }),
+};
+
+// Cost per million tokens (USD) — update as pricing changes
+const COST_TABLE = {
+  'claude-opus-4':     { input: 15.0,  output: 75.0 },
+  'claude-sonnet-4':   { input: 3.0,   output: 15.0 },
+  'claude-haiku':      { input: 0.25,  output: 1.25 },
+  'gpt-4o':            { input: 2.5,   output: 10.0 },
+  'gpt-4.1':           { input: 2.0,   output: 8.0 },
+  'o3':                { input: 2.0,   output: 8.0 },
+  'gemini-2.5-flash':  { input: 0.15,  output: 0.60 },
+  'gemini-2.5-pro':    { input: 1.25,  output: 10.0 },
+  '_default':          { input: 1.0,   output: 3.0 },
+};
+
+function estimateCost(model, inputTokens, outputTokens) {
+  const key = Object.keys(COST_TABLE).find(k => k !== '_default' && model.startsWith(k)) || '_default';
+  const rate = COST_TABLE[key];
+  return (inputTokens * rate.input + outputTokens * rate.output) / 1_000_000;
+}
+
+function writeProxyLedgerEntry(record) {
+  const date = record.timestamp.slice(0, 10);
+  const dir = path.join(workspaceRoot, 'out', 'usage');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${date}.jsonl`), JSON.stringify(record) + '\n');
+  } catch (err) {
+    console.error('Proxy ledger write error:', err.message);
+  }
+}
+
+function resolveProxyAuth(req, provider) {
+  // For Anthropic, the key is in x-api-key header; for others it's Authorization: Bearer
+  if (provider === 'anthropic') {
+    return req.headers['x-api-key'] || PROXY_KEY_MAP[provider] || null;
+  }
+  const authHeader = req.headers['authorization'] || '';
+  const agentKey = authHeader.startsWith('Bearer ') ? authHeader : null;
+  return agentKey || (PROXY_KEY_MAP[provider] ? `Bearer ${PROXY_KEY_MAP[provider]}` : null);
+}
+
+function buildUpstreamHeaders(req, provider, authValue) {
+  const headers = { 'content-type': req.headers['content-type'] || 'application/json' };
+  if (provider === 'anthropic') {
+    headers['x-api-key'] = authValue;
+    headers['anthropic-version'] = req.headers['anthropic-version'] || '2023-06-01';
+    if (req.headers['anthropic-beta']) headers['anthropic-beta'] = req.headers['anthropic-beta'];
+  } else if (provider === 'google') {
+    // Google uses query-param auth, no header needed — authValue is the key itself
+  } else {
+    headers['authorization'] = authValue;
+  }
+  if (req.headers['openai-organization']) headers['openai-organization'] = req.headers['openai-organization'];
+  return headers;
+}
+
+async function handleProxy(req, res, provider, upstreamPath) {
+  const providerConfig = PROXY_PROVIDERS[provider];
+  if (!providerConfig) return sendJson(res, 400, { error: 'unknown_provider', provider });
+
+  const authValue = resolveProxyAuth(req, provider);
+  // Google uses query-param auth — check if key is in URL or in env
+  if (provider !== 'google' && !authValue) return sendJson(res, 401, { error: 'missing_api_key', hint: 'Provide Authorization/x-api-key header or set MC_PROXY_KEY_' + provider.toUpperCase() });
+  if (provider === 'google' && !upstreamPath.includes('key=') && !PROXY_KEY_MAP.google) {
+    return sendJson(res, 401, { error: 'missing_api_key', hint: 'Include key= query param or set MC_PROXY_KEY_GOOGLE' });
+  }
+
+  // If Google and centralized key configured but not in URL, append it
+  let finalUpstreamPath = upstreamPath;
+  if (provider === 'google' && !upstreamPath.includes('key=') && PROXY_KEY_MAP.google) {
+    finalUpstreamPath += (upstreamPath.includes('?') ? '&' : '?') + `key=${PROXY_KEY_MAP.google}`;
+  }
+
+  const agentName = req.headers['x-mc-agent'] || 'unknown';
+  const session = req.headers['x-mc-session'] || 'unknown';
+  const startTime = Date.now();
+  const raw = await readBody(req);
+
+  const upstreamHeaders = buildUpstreamHeaders(req, provider, authValue);
+  upstreamHeaders['content-length'] = Buffer.byteLength(raw);
+
+  // Forward to upstream provider
+  const upstreamResponse = await new Promise((resolve, reject) => {
+    const upstreamReq = https.request({
+      hostname: providerConfig.hostname,
+      path: finalUpstreamPath,
+      method: 'POST',
+      timeout: PROXY_TIMEOUT_MS,
+      headers: upstreamHeaders,
+    }, (upstreamRes) => {
+      const chunks = [];
+      upstreamRes.on('data', (c) => chunks.push(c));
+      upstreamRes.on('end', () => resolve({ statusCode: upstreamRes.statusCode, headers: upstreamRes.headers, body: Buffer.concat(chunks) }));
+    });
+    upstreamReq.on('timeout', () => { upstreamReq.destroy(); reject(new Error('Upstream provider timeout')); });
+    upstreamReq.on('error', reject);
+    upstreamReq.write(raw);
+    upstreamReq.end();
+  });
+
+  // Send response back to agent immediately
+  const responseHeaders = { 'content-type': upstreamResponse.headers['content-type'] || 'application/json' };
+  if (upstreamResponse.headers['x-request-id']) responseHeaders['x-request-id'] = upstreamResponse.headers['x-request-id'];
+  res.writeHead(upstreamResponse.statusCode, responseHeaders);
+  res.end(upstreamResponse.body);
+
+  // Extract tokens and write ledger (fail-open — errors logged, never block agent)
+  const durationMs = Date.now() - startTime;
+  const success = upstreamResponse.statusCode >= 200 && upstreamResponse.statusCode < 300;
+  let extractedModel = 'unknown', inputTokens = 0, outputTokens = 0;
+  try {
+    const json = JSON.parse(upstreamResponse.body.toString('utf8'));
+    const extracted = TOKEN_EXTRACTORS[provider](json);
+    extractedModel = extracted.model;
+    inputTokens = extracted.inputTokens;
+    outputTokens = extracted.outputTokens;
+  } catch { /* non-JSON or error response — tokens stay at 0 */ }
+
+  // Try to get model from request body if not in response
+  if (extractedModel === 'unknown') {
+    try { extractedModel = JSON.parse(raw).model || 'unknown'; } catch {}
+  }
+
+  const ts = new Date().toISOString();
+  writeProxyLedgerEntry({
+    id: `proxy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    agent: agentName,
+    model: extractedModel,
+    provider,
+    operationType: 'llm_call',
+    estimatedCostUsd: estimateCost(extractedModel, inputTokens, outputTokens),
+    durationMs,
+    success,
+    note: `Proxied POST ${upstreamPath}`,
+    timestamp: ts,
+    session,
+    inputTokens,
+    outputTokens,
+  });
+}
 
 function httpsPostJson(hostname, urlPath, body, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -501,6 +670,24 @@ const server = http.createServer(async (req, res) => {
 
   const approvalMatch = /^\/api\/approvals\/([^/]+)\/resolve$/.exec(url.pathname);
   if (req.method === 'POST' && approvalMatch) return handleApprovalResolve(req, res, decodeURIComponent(approvalMatch[1]));
+
+  // LLM Proxy routes
+  if (url.pathname === '/api/proxy/health' && req.method === 'GET') {
+    return sendJson(res, 200, { ok: true, enabled: MC_PROXY_ENABLED, providers: Object.keys(PROXY_PROVIDERS) });
+  }
+  const proxyMatch = /^\/api\/proxy\/([a-z]+)(\/.*)?$/.exec(url.pathname);
+  if (req.method === 'POST' && proxyMatch) {
+    if (!MC_PROXY_ENABLED) return sendJson(res, 503, { error: 'proxy_disabled', hint: 'Set MC_PROXY_ENABLED=true' });
+    const provider = proxyMatch[1];
+    const upstreamPath = proxyMatch[2] || '/';
+    try {
+      return await handleProxy(req, res, provider, upstreamPath);
+    } catch (err) {
+      console.error('Proxy error:', err.message);
+      if (!res.headersSent) sendJson(res, 502, { error: 'proxy_error', message: err.message });
+    }
+    return;
+  }
 
   // Static file serving
   const requested = url.pathname === '/' ? '/index.html' : url.pathname;
