@@ -195,6 +195,8 @@ function collectUsageRecords() {
       timestamp: freshAt,
       sourcePath: path.relative(workspaceRoot, row._path),
       session: row.session || 'unknown',
+      taskId: row.taskId || row.task_id || null,
+      commitmentId: row.commitmentId || row.commitment_id || null,
       inputTokens: Number(row.inputTokens ?? 0),
       outputTokens: Number(row.outputTokens ?? 0),
       _truth: row._truth || truth('verified', path.relative(workspaceRoot, row._path), freshAt)
@@ -241,6 +243,25 @@ function buildCommitmentStats(commitments) {
   const abs = Math.abs(avg || 0);
   const avgDeliveryLead = avg === null ? '—' : `${Math.floor(abs/60) ? `${Math.floor(abs/60)}h ` : ''}${abs%60}m ${avg >= 0 ? 'early' : 'late'}`.trim();
   return { commitmentsMade: made, delivered, missed, onTime, atRisk, avgDeliveryLead };
+}
+
+function buildCostByEntity(usage) {
+  const byTask = {};
+  const byCommitment = {};
+  for (const row of usage) {
+    const cost = Number(row.estimatedCostUsd || 0);
+    if (row.taskId) {
+      if (!byTask[row.taskId]) byTask[row.taskId] = { taskId: row.taskId, costUsd: 0, rows: 0 };
+      byTask[row.taskId].costUsd += cost;
+      byTask[row.taskId].rows++;
+    }
+    if (row.commitmentId) {
+      if (!byCommitment[row.commitmentId]) byCommitment[row.commitmentId] = { commitmentId: row.commitmentId, costUsd: 0, rows: 0 };
+      byCommitment[row.commitmentId].costUsd += cost;
+      byCommitment[row.commitmentId].rows++;
+    }
+  }
+  return { byTask: Object.values(byTask), byCommitment: Object.values(byCommitment) };
 }
 
 function readApprovalLedger(nowIso) {
@@ -319,6 +340,7 @@ export function generateState(now = new Date()) {
   });
   const events = [...recentStatuses, ...sessionEvents, ...memoryEvents].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
+  const costByEntity = buildCostByEntity(usage);
   const spendTodayUsd = usage.filter((row) => String(row.timestamp || '').startsWith(today)).reduce((sum, row) => sum + Number(row.estimatedCostUsd || 0), 0);
   const missionTask = tasks.find((task) => task.project === 'Mission Control' && task.lane === 'now') || tasks.find((task) => task.project === 'Mission Control');
   const waitingTasks = tasks.filter((task) => task.status === 'waiting_for_human');
@@ -425,6 +447,7 @@ export function generateState(now = new Date()) {
     alerts,
     schedules,
     usage,
+    costByEntity,
     artifacts,
     truthGaps: {
       usageCost: usage.length ? 'direct_real_ledger' : 'missing_direct_ledger',

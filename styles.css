@@ -854,6 +854,8 @@ code {
 .commitment-row--at_risk .commitment-countdown,
 .commitment-row--at-risk .commitment-countdown { color: var(--warning); }
 .commitment-row--missed .commitment-countdown { color: var(--error); }
+.commitment-cost { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; color: var(--accent-text); font-size: 0.85em; }
+.badge--cost { color: var(--accent-text); background: var(--accent-subtle); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
 
 .scorecard-row {
   display: flex;
