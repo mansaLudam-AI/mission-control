@@ -372,7 +372,6 @@ export function generateState(now = new Date()) {
   const workspaceState = exists(workspaceStatePath) ? JSON.parse(read(workspaceStatePath)) : null;
 
   // Compute relative schedule dates so baked state.json stays fresh
-  const now = new Date();
   const todayAt = (h, m = 0) => { const d = new Date(now); d.setUTCHours(h, m, 0, 0); return d; };
   const nextNightly = todayAt(9, 0); // 2 AM Pacific = 9 AM UTC
   if (nextNightly <= now) nextNightly.setUTCDate(nextNightly.getUTCDate() + 1);
