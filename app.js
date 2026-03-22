@@ -54,6 +54,7 @@ let activeKanbanLane = 'now';
 let commitmentCountdownInterval = null;
 let aiSummary = null;
 let aiSummaryLoading = false;
+let aiSummaryError = false;
 let digestData = null;
 let digestDismissed = false;
 let liveUsage = null;
@@ -510,21 +511,15 @@ function renderCompactActivity() {
 
 /* ── AI Summary Hero Card ── */
 function renderSummaryCard() {
-  if (aiSummaryLoading && !aiSummary) {
-    return `<section class="card ai-summary-card ai-summary-card--loading" id="ai-summary-card">
-      <div class="ai-summary-skeleton">
-        <div class="skeleton-line skeleton-line--short"></div>
-        <div class="skeleton-line skeleton-line--long"></div>
-        <div class="skeleton-line skeleton-line--medium"></div>
-      </div>
-    </section>`;
-  }
   if (!aiSummary) {
+    const label = aiSummaryError ? 'Summary unavailable' : 'Loading summary…';
     return `<section class="card ai-summary-card ai-summary-card--loading" id="ai-summary-card">
       <div class="ai-summary-skeleton">
         <div class="skeleton-line skeleton-line--short"></div>
         <div class="skeleton-line skeleton-line--long"></div>
         <div class="skeleton-line skeleton-line--medium"></div>
+        <span class="ai-summary-skeleton-label">${escapeHtml(label)}</span>
+        ${aiSummaryError ? '<button class="btn btn--ghost" onclick="aiSummaryError=false;fetchSummary()">Retry</button>' : ''}
       </div>
     </section>`;
   }
@@ -556,12 +551,14 @@ async function fetchSummary(digest = false) {
   if (aiSummaryLoading) return;
   if (aiSummary && aiSummary.lastStateUpdate === state?.meta?.generatedAt) return;
   aiSummaryLoading = true;
+  aiSummaryError = false;
   const el = document.getElementById('ai-summary-card');
   if (el && !aiSummary) el.outerHTML = renderSummaryCard();
   try {
     const res = await fetch(`/api/summary?ts=${Date.now()}`);
-    if (res.ok) aiSummary = await res.json();
-  } catch { /* summary fetch failed silently */ }
+    if (res.ok) { aiSummary = await res.json(); }
+    else { aiSummaryError = true; }
+  } catch { aiSummaryError = true; }
   aiSummaryLoading = false;
   const el2 = document.getElementById('ai-summary-card');
   if (el2) el2.outerHTML = renderSummaryCard();

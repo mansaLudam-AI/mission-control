@@ -916,6 +916,7 @@ code {
 .skeleton-line--short { width: 40%; }
 .skeleton-line--medium { width: 70%; }
 .skeleton-line--long { width: 95%; }
+.ai-summary-skeleton-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
 /* ── Morning Digest ── */
 .ai-digest-card { background: rgba(110, 86, 207, 0.06); border-color: rgba(110, 86, 207, 0.2); }

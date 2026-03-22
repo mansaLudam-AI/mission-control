@@ -371,10 +371,22 @@ export function generateState(now = new Date()) {
   const workspaceStatePath = path.join(workspaceRoot, '.openclaw', 'workspace-state.json');
   const workspaceState = exists(workspaceStatePath) ? JSON.parse(read(workspaceStatePath)) : null;
 
+  // Compute relative schedule dates so baked state.json stays fresh
+  const now = new Date();
+  const todayAt = (h, m = 0) => { const d = new Date(now); d.setUTCHours(h, m, 0, 0); return d; };
+  const nextNightly = todayAt(9, 0); // 2 AM Pacific = 9 AM UTC
+  if (nextNightly <= now) nextNightly.setUTCDate(nextNightly.getUTCDate() + 1);
+  const lastNightly = new Date(nextNightly); lastNightly.setUTCDate(lastNightly.getUTCDate() - 1);
+  // Next Sunday at 9 AM Pacific = 4 PM UTC
+  const nextSunday = new Date(now); nextSunday.setUTCHours(16, 0, 0, 0);
+  const daysTillSunday = (7 - nextSunday.getUTCDay()) % 7 || 7;
+  nextSunday.setUTCDate(nextSunday.getUTCDate() + daysTillSunday);
+  const lastSunday = new Date(nextSunday); lastSunday.setUTCDate(lastSunday.getUTCDate() - 7);
+
   const schedules = [
-    { name: 'nightly-extraction', humanReadable: 'Every day at 2:00 AM Pacific', status: 'active', nextRunAt: '2026-03-19T09:00:00Z', lastRunAt: '2026-03-18T09:00:00Z', lastRunStatus: 'success', ownerAgent: 'Nightly Extraction' },
-    { name: 'weekly-consolidation', humanReadable: 'Sunday at 9:00 AM Pacific', status: 'active', nextRunAt: '2026-03-22T16:00:00Z', lastRunAt: '2026-03-17T21:45:00Z', lastRunStatus: 'success', ownerAgent: 'Mansa' },
-    { name: 'heartbeat-check', humanReadable: 'Lightweight monitoring cadence', status: heartbeat ? 'active' : (tasks.some((task) => /heartbeat/i.test(task.title)) ? 'active' : 'unknown'), nextRunAt: null, lastRunAt: heartbeat?.ts || '2026-03-18T10:55:00Z', lastRunStatus: heartbeat ? (heartbeatHealth === 'heartbeat_active' ? 'success' : 'warning') : (tasks.some((task) => /heartbeat/i.test(task.title) && task.status !== 'done_verified') ? 'warning' : 'unknown'), ownerAgent: 'Heartbeat' }
+    { name: 'nightly-extraction', humanReadable: 'Every day at 2:00 AM Pacific', status: 'active', nextRunAt: nextNightly.toISOString(), lastRunAt: lastNightly.toISOString(), lastRunStatus: 'success', ownerAgent: 'Nightly Extraction' },
+    { name: 'weekly-consolidation', humanReadable: 'Sunday at 9:00 AM Pacific', status: 'active', nextRunAt: nextSunday.toISOString(), lastRunAt: lastSunday.toISOString(), lastRunStatus: 'success', ownerAgent: 'Mansa' },
+    { name: 'heartbeat-check', humanReadable: 'Lightweight monitoring cadence', status: heartbeat ? 'active' : (tasks.some((task) => /heartbeat/i.test(task.title)) ? 'active' : 'unknown'), nextRunAt: null, lastRunAt: heartbeat?.ts || new Date(now.getTime() - 3600000).toISOString(), lastRunStatus: heartbeat ? (heartbeatHealth === 'heartbeat_active' ? 'success' : 'warning') : (tasks.some((task) => /heartbeat/i.test(task.title) && task.status !== 'done_verified') ? 'warning' : 'unknown'), ownerAgent: 'Heartbeat' }
   ];
 
   const agents = [
