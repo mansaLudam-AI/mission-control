@@ -195,6 +195,8 @@ function collectUsageRecords() {
       timestamp: freshAt,
       sourcePath: path.relative(workspaceRoot, row._path),
       session: row.session || 'unknown',
+      taskId: row.taskId || row.task_id || null,
+      commitmentId: row.commitmentId || row.commitment_id || null,
       inputTokens: Number(row.inputTokens ?? 0),
       outputTokens: Number(row.outputTokens ?? 0),
       _truth: row._truth || truth('verified', path.relative(workspaceRoot, row._path), freshAt)
@@ -241,6 +243,25 @@ function buildCommitmentStats(commitments) {
   const abs = Math.abs(avg || 0);
   const avgDeliveryLead = avg === null ? '—' : `${Math.floor(abs/60) ? `${Math.floor(abs/60)}h ` : ''}${abs%60}m ${avg >= 0 ? 'early' : 'late'}`.trim();
   return { commitmentsMade: made, delivered, missed, onTime, atRisk, avgDeliveryLead };
+}
+
+function buildCostByEntity(usage) {
+  const byTask = {};
+  const byCommitment = {};
+  for (const row of usage) {
+    const cost = Number(row.estimatedCostUsd || 0);
+    if (row.taskId) {
+      if (!byTask[row.taskId]) byTask[row.taskId] = { taskId: row.taskId, costUsd: 0, rows: 0 };
+      byTask[row.taskId].costUsd += cost;
+      byTask[row.taskId].rows++;
+    }
+    if (row.commitmentId) {
+      if (!byCommitment[row.commitmentId]) byCommitment[row.commitmentId] = { commitmentId: row.commitmentId, costUsd: 0, rows: 0 };
+      byCommitment[row.commitmentId].costUsd += cost;
+      byCommitment[row.commitmentId].rows++;
+    }
+  }
+  return { byTask: Object.values(byTask), byCommitment: Object.values(byCommitment) };
 }
 
 function readApprovalLedger(nowIso) {
@@ -319,6 +340,7 @@ export function generateState(now = new Date()) {
   });
   const events = [...recentStatuses, ...sessionEvents, ...memoryEvents].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
+  const costByEntity = buildCostByEntity(usage);
   const spendTodayUsd = usage.filter((row) => String(row.timestamp || '').startsWith(today)).reduce((sum, row) => sum + Number(row.estimatedCostUsd || 0), 0);
   const missionTask = tasks.find((task) => task.project === 'Mission Control' && task.lane === 'now') || tasks.find((task) => task.project === 'Mission Control');
   const waitingTasks = tasks.filter((task) => task.status === 'waiting_for_human');
@@ -349,10 +371,21 @@ export function generateState(now = new Date()) {
   const workspaceStatePath = path.join(workspaceRoot, '.openclaw', 'workspace-state.json');
   const workspaceState = exists(workspaceStatePath) ? JSON.parse(read(workspaceStatePath)) : null;
 
+  // Compute relative schedule dates so baked state.json stays fresh
+  const todayAt = (h, m = 0) => { const d = new Date(now); d.setUTCHours(h, m, 0, 0); return d; };
+  const nextNightly = todayAt(9, 0); // 2 AM Pacific = 9 AM UTC
+  if (nextNightly <= now) nextNightly.setUTCDate(nextNightly.getUTCDate() + 1);
+  const lastNightly = new Date(nextNightly); lastNightly.setUTCDate(lastNightly.getUTCDate() - 1);
+  // Next Sunday at 9 AM Pacific = 4 PM UTC
+  const nextSunday = new Date(now); nextSunday.setUTCHours(16, 0, 0, 0);
+  const daysTillSunday = (7 - nextSunday.getUTCDay()) % 7 || 7;
+  nextSunday.setUTCDate(nextSunday.getUTCDate() + daysTillSunday);
+  const lastSunday = new Date(nextSunday); lastSunday.setUTCDate(lastSunday.getUTCDate() - 7);
+
   const schedules = [
-    { name: 'nightly-extraction', humanReadable: 'Every day at 2:00 AM Pacific', status: 'active', nextRunAt: '2026-03-19T09:00:00Z', lastRunAt: '2026-03-18T09:00:00Z', lastRunStatus: 'success', ownerAgent: 'Nightly Extraction' },
-    { name: 'weekly-consolidation', humanReadable: 'Sunday at 9:00 AM Pacific', status: 'active', nextRunAt: '2026-03-22T16:00:00Z', lastRunAt: '2026-03-17T21:45:00Z', lastRunStatus: 'success', ownerAgent: 'Mansa' },
-    { name: 'heartbeat-check', humanReadable: 'Lightweight monitoring cadence', status: heartbeat ? 'active' : (tasks.some((task) => /heartbeat/i.test(task.title)) ? 'active' : 'unknown'), nextRunAt: null, lastRunAt: heartbeat?.ts || '2026-03-18T10:55:00Z', lastRunStatus: heartbeat ? (heartbeatHealth === 'heartbeat_active' ? 'success' : 'warning') : (tasks.some((task) => /heartbeat/i.test(task.title) && task.status !== 'done_verified') ? 'warning' : 'unknown'), ownerAgent: 'Heartbeat' }
+    { name: 'nightly-extraction', humanReadable: 'Every day at 2:00 AM Pacific', status: 'active', nextRunAt: nextNightly.toISOString(), lastRunAt: lastNightly.toISOString(), lastRunStatus: 'success', ownerAgent: 'Nightly Extraction' },
+    { name: 'weekly-consolidation', humanReadable: 'Sunday at 9:00 AM Pacific', status: 'active', nextRunAt: nextSunday.toISOString(), lastRunAt: lastSunday.toISOString(), lastRunStatus: 'success', ownerAgent: 'Mansa' },
+    { name: 'heartbeat-check', humanReadable: 'Lightweight monitoring cadence', status: heartbeat ? 'active' : (tasks.some((task) => /heartbeat/i.test(task.title)) ? 'active' : 'unknown'), nextRunAt: null, lastRunAt: heartbeat?.ts || new Date(now.getTime() - 3600000).toISOString(), lastRunStatus: heartbeat ? (heartbeatHealth === 'heartbeat_active' ? 'success' : 'warning') : (tasks.some((task) => /heartbeat/i.test(task.title) && task.status !== 'done_verified') ? 'warning' : 'unknown'), ownerAgent: 'Heartbeat' }
   ];
 
   const agents = [
@@ -425,6 +458,7 @@ export function generateState(now = new Date()) {
     alerts,
     schedules,
     usage,
+    costByEntity,
     artifacts,
     truthGaps: {
       usageCost: usage.length ? 'direct_real_ledger' : 'missing_direct_ledger',
