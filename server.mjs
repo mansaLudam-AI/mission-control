@@ -19,18 +19,9 @@ const MC_AI_PROVIDER = process.env.MC_AI_PROVIDER || 'google';
 const MC_NUDGE_ENDPOINT = process.env.MC_NUDGE_ENDPOINT || null;
 const SUMMARY_TTL_MS = 5 * 60 * 1000;
 
-// Provider usage API keys (separate from chat completion keys)
-const ANTHROPIC_ADMIN_KEY = process.env.MC_ANTHROPIC_ADMIN_KEY || null;
-const OPENAI_ADMIN_KEY = process.env.MC_OPENAI_ADMIN_KEY || null;
+// OpenRouter usage tracking (single source of truth for all LLM costs)
 const OPENROUTER_API_KEY = process.env.MC_OPENROUTER_API_KEY || null;
 const USAGE_POLL_TTL_MS = 5 * 60 * 1000;
-// LLM Proxy configuration
-const MC_PROXY_ENABLED = process.env.MC_PROXY_ENABLED === 'true';
-const MC_PROXY_KEY_ANTHROPIC = process.env.MC_PROXY_KEY_ANTHROPIC || null;
-const MC_PROXY_KEY_OPENAI = process.env.MC_PROXY_KEY_OPENAI || null;
-const MC_PROXY_KEY_GOOGLE = process.env.MC_PROXY_KEY_GOOGLE || null;
-const MC_PROXY_KEY_OPENROUTER = process.env.MC_PROXY_KEY_OPENROUTER || null;
-const PROXY_TIMEOUT_MS = 120_000; // 2 minutes for LLM calls
 let usageCache = { data: null, fetchedAt: 0 };
 let pushedState = null;
 let pushedAt = 0;
@@ -141,167 +132,6 @@ const AI_PROVIDERS = {
   }
 };
 
-/* ── LLM Proxy Architecture ── */
-const PROXY_PROVIDERS = {
-  anthropic:  { hostname: 'api.anthropic.com' },
-  openai:     { hostname: 'api.openai.com' },
-  google:     { hostname: 'generativelanguage.googleapis.com' },
-  openrouter: { hostname: 'openrouter.ai' },
-};
-
-const PROXY_KEY_MAP = {
-  anthropic: MC_PROXY_KEY_ANTHROPIC,
-  openai: MC_PROXY_KEY_OPENAI,
-  google: MC_PROXY_KEY_GOOGLE,
-  openrouter: MC_PROXY_KEY_OPENROUTER,
-};
-
-const TOKEN_EXTRACTORS = {
-  anthropic:  (json) => ({ inputTokens: json?.usage?.input_tokens || 0, outputTokens: json?.usage?.output_tokens || 0, model: json?.model || 'unknown' }),
-  openai:     (json) => ({ inputTokens: json?.usage?.prompt_tokens || 0, outputTokens: json?.usage?.completion_tokens || 0, model: json?.model || 'unknown' }),
-  google:     (json) => ({ inputTokens: json?.usageMetadata?.promptTokenCount || 0, outputTokens: json?.usageMetadata?.candidatesTokenCount || 0, model: 'unknown' }),
-  openrouter: (json) => ({ inputTokens: json?.usage?.prompt_tokens || 0, outputTokens: json?.usage?.completion_tokens || 0, model: json?.model || 'unknown' }),
-};
-
-// Cost per million tokens (USD) — update as pricing changes
-const COST_TABLE = {
-  'claude-opus-4':     { input: 15.0,  output: 75.0 },
-  'claude-sonnet-4':   { input: 3.0,   output: 15.0 },
-  'claude-haiku':      { input: 0.25,  output: 1.25 },
-  'gpt-4o':            { input: 2.5,   output: 10.0 },
-  'gpt-4.1':           { input: 2.0,   output: 8.0 },
-  'o3':                { input: 2.0,   output: 8.0 },
-  'gemini-2.5-flash':  { input: 0.15,  output: 0.60 },
-  'gemini-2.5-pro':    { input: 1.25,  output: 10.0 },
-  '_default':          { input: 1.0,   output: 3.0 },
-};
-
-function estimateCost(model, inputTokens, outputTokens) {
-  const key = Object.keys(COST_TABLE).find(k => k !== '_default' && model.startsWith(k)) || '_default';
-  const rate = COST_TABLE[key];
-  return (inputTokens * rate.input + outputTokens * rate.output) / 1_000_000;
-}
-
-function writeProxyLedgerEntry(record) {
-  const date = record.timestamp.slice(0, 10);
-  const dir = path.join(workspaceRoot, 'out', 'usage');
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, `${date}.jsonl`), JSON.stringify(record) + '\n');
-  } catch (err) {
-    console.error('Proxy ledger write error:', err.message);
-  }
-}
-
-function resolveProxyAuth(req, provider) {
-  // For Anthropic, the key is in x-api-key header; for others it's Authorization: Bearer
-  if (provider === 'anthropic') {
-    return req.headers['x-api-key'] || PROXY_KEY_MAP[provider] || null;
-  }
-  const authHeader = req.headers['authorization'] || '';
-  const agentKey = authHeader.startsWith('Bearer ') ? authHeader : null;
-  return agentKey || (PROXY_KEY_MAP[provider] ? `Bearer ${PROXY_KEY_MAP[provider]}` : null);
-}
-
-function buildUpstreamHeaders(req, provider, authValue) {
-  const headers = { 'content-type': req.headers['content-type'] || 'application/json' };
-  if (provider === 'anthropic') {
-    headers['x-api-key'] = authValue;
-    headers['anthropic-version'] = req.headers['anthropic-version'] || '2023-06-01';
-    if (req.headers['anthropic-beta']) headers['anthropic-beta'] = req.headers['anthropic-beta'];
-  } else if (provider === 'google') {
-    // Google uses query-param auth, no header needed — authValue is the key itself
-  } else {
-    headers['authorization'] = authValue;
-  }
-  if (req.headers['openai-organization']) headers['openai-organization'] = req.headers['openai-organization'];
-  return headers;
-}
-
-async function handleProxy(req, res, provider, upstreamPath) {
-  const providerConfig = PROXY_PROVIDERS[provider];
-  if (!providerConfig) return sendJson(res, 400, { error: 'unknown_provider', provider });
-
-  const authValue = resolveProxyAuth(req, provider);
-  // Google uses query-param auth — check if key is in URL or in env
-  if (provider !== 'google' && !authValue) return sendJson(res, 401, { error: 'missing_api_key', hint: 'Provide Authorization/x-api-key header or set MC_PROXY_KEY_' + provider.toUpperCase() });
-  if (provider === 'google' && !upstreamPath.includes('key=') && !PROXY_KEY_MAP.google) {
-    return sendJson(res, 401, { error: 'missing_api_key', hint: 'Include key= query param or set MC_PROXY_KEY_GOOGLE' });
-  }
-
-  // If Google and centralized key configured but not in URL, append it
-  let finalUpstreamPath = upstreamPath;
-  if (provider === 'google' && !upstreamPath.includes('key=') && PROXY_KEY_MAP.google) {
-    finalUpstreamPath += (upstreamPath.includes('?') ? '&' : '?') + `key=${PROXY_KEY_MAP.google}`;
-  }
-
-  const agentName = req.headers['x-mc-agent'] || 'unknown';
-  const session = req.headers['x-mc-session'] || 'unknown';
-  const startTime = Date.now();
-  const raw = await readBody(req);
-
-  const upstreamHeaders = buildUpstreamHeaders(req, provider, authValue);
-  upstreamHeaders['content-length'] = Buffer.byteLength(raw);
-
-  // Forward to upstream provider
-  const upstreamResponse = await new Promise((resolve, reject) => {
-    const upstreamReq = https.request({
-      hostname: providerConfig.hostname,
-      path: finalUpstreamPath,
-      method: 'POST',
-      timeout: PROXY_TIMEOUT_MS,
-      headers: upstreamHeaders,
-    }, (upstreamRes) => {
-      const chunks = [];
-      upstreamRes.on('data', (c) => chunks.push(c));
-      upstreamRes.on('end', () => resolve({ statusCode: upstreamRes.statusCode, headers: upstreamRes.headers, body: Buffer.concat(chunks) }));
-    });
-    upstreamReq.on('timeout', () => { upstreamReq.destroy(); reject(new Error('Upstream provider timeout')); });
-    upstreamReq.on('error', reject);
-    upstreamReq.write(raw);
-    upstreamReq.end();
-  });
-
-  // Send response back to agent immediately
-  const responseHeaders = { 'content-type': upstreamResponse.headers['content-type'] || 'application/json' };
-  if (upstreamResponse.headers['x-request-id']) responseHeaders['x-request-id'] = upstreamResponse.headers['x-request-id'];
-  res.writeHead(upstreamResponse.statusCode, responseHeaders);
-  res.end(upstreamResponse.body);
-
-  // Extract tokens and write ledger (fail-open — errors logged, never block agent)
-  const durationMs = Date.now() - startTime;
-  const success = upstreamResponse.statusCode >= 200 && upstreamResponse.statusCode < 300;
-  let extractedModel = 'unknown', inputTokens = 0, outputTokens = 0;
-  try {
-    const json = JSON.parse(upstreamResponse.body.toString('utf8'));
-    const extracted = TOKEN_EXTRACTORS[provider](json);
-    extractedModel = extracted.model;
-    inputTokens = extracted.inputTokens;
-    outputTokens = extracted.outputTokens;
-  } catch { /* non-JSON or error response — tokens stay at 0 */ }
-
-  // Try to get model from request body if not in response
-  if (extractedModel === 'unknown') {
-    try { extractedModel = JSON.parse(raw).model || 'unknown'; } catch {}
-  }
-
-  const ts = new Date().toISOString();
-  writeProxyLedgerEntry({
-    id: `proxy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    agent: agentName,
-    model: extractedModel,
-    provider,
-    operationType: 'llm_call',
-    estimatedCostUsd: estimateCost(extractedModel, inputTokens, outputTokens),
-    durationMs,
-    success,
-    note: `Proxied POST ${upstreamPath}`,
-    timestamp: ts,
-    session,
-    inputTokens,
-    outputTokens,
-  });
-}
 
 function httpsPostJson(hostname, urlPath, body, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -490,92 +320,54 @@ function httpsGetJson(hostname, urlPath, headers = {}) {
   });
 }
 
-async function fetchAnthropicUsage() {
-  if (!ANTHROPIC_ADMIN_KEY) return null;
+async function fetchOpenRouterActivity() {
+  if (!OPENROUTER_API_KEY) return null;
   try {
+    // Fetch today's activity (per-model breakdown with actual costs from OpenRouter)
     const today = new Date().toISOString().slice(0, 10);
-    const data = await httpsGetJson('api.anthropic.com', `/v1/organizations/usage?start_date=${today}&end_date=${today}`, {
-      'x-api-key': ANTHROPIC_ADMIN_KEY,
-      'anthropic-version': '2023-06-01'
-    });
-    // Normalize to common format
-    const totalCost = data?.usage?.reduce((sum, entry) => sum + (entry.cost_usd || 0), 0) || 0;
-    const totalInputTokens = data?.usage?.reduce((sum, entry) => sum + (entry.input_tokens || 0), 0) || 0;
-    const totalOutputTokens = data?.usage?.reduce((sum, entry) => sum + (entry.output_tokens || 0), 0) || 0;
-    return {
-      provider: 'anthropic',
-      costUsd: totalCost,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
-      models: data?.usage?.map(e => ({ model: e.model, costUsd: e.cost_usd || 0, inputTokens: e.input_tokens || 0, outputTokens: e.output_tokens || 0 })) || [],
-      fetchedAt: new Date().toISOString(),
-      raw: data
-    };
-  } catch (err) {
-    console.error('Anthropic usage fetch error:', err.message);
-    return { provider: 'anthropic', error: err.message, fetchedAt: new Date().toISOString() };
-  }
-}
+    const [activity, keyData] = await Promise.all([
+      httpsGetJson('openrouter.ai', `/api/v1/activity?date=${today}`, {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`
+      }),
+      httpsGetJson('openrouter.ai', '/api/v1/auth/key', {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`
+      })
+    ]);
 
-async function fetchOpenAIUsage() {
-  if (!OPENAI_ADMIN_KEY) return null;
-  try {
-    const now = Math.floor(Date.now() / 1000);
-    const dayStart = now - (now % 86400);
-    const data = await httpsGetJson('api.openai.com', `/v1/organization/usage/completions?start_time=${dayStart}&limit=100`, {
-      'Authorization': `Bearer ${OPENAI_ADMIN_KEY}`
-    });
-    const buckets = data?.data || [];
-    let totalCost = 0, totalInput = 0, totalOutput = 0;
+    const items = activity?.data || [];
     const modelMap = {};
-    for (const bucket of buckets) {
-      for (const result of (bucket.results || [])) {
-        const cost = (result.input_tokens || 0) * 0.000003 + (result.output_tokens || 0) * 0.000015;  // rough estimate
-        totalCost += cost;
-        totalInput += result.input_tokens || 0;
-        totalOutput += result.output_tokens || 0;
-        const m = result.model || 'unknown';
-        if (!modelMap[m]) modelMap[m] = { model: m, costUsd: 0, inputTokens: 0, outputTokens: 0 };
-        modelMap[m].costUsd += cost;
-        modelMap[m].inputTokens += result.input_tokens || 0;
-        modelMap[m].outputTokens += result.output_tokens || 0;
-      }
+    let totalCost = 0, totalInput = 0, totalOutput = 0;
+
+    for (const item of items) {
+      const model = item.model || item.model_name || 'unknown';
+      const cost = Number(item.total_cost || item.cost || 0);
+      const input = Number(item.tokens_prompt || item.input_tokens || 0);
+      const output = Number(item.tokens_completion || item.output_tokens || 0);
+      totalCost += cost;
+      totalInput += input;
+      totalOutput += output;
+      if (!modelMap[model]) modelMap[model] = { model, costUsd: 0, inputTokens: 0, outputTokens: 0 };
+      modelMap[model].costUsd += cost;
+      modelMap[model].inputTokens += input;
+      modelMap[model].outputTokens += output;
     }
+
+    // Fall back to credits-used total from /auth/key if activity returned no cost data
+    const creditsCost = Number(keyData?.data?.usage || 0);
+    if (totalCost === 0 && creditsCost > 0) totalCost = creditsCost;
+
     return {
-      provider: 'openai',
+      provider: 'openrouter',
       costUsd: totalCost,
+      creditsLimit: keyData?.data?.limit || null,
       inputTokens: totalInput,
       outputTokens: totalOutput,
       models: Object.values(modelMap),
       fetchedAt: new Date().toISOString(),
-      raw: data
+      raw: { activity, keyData }
     };
   } catch (err) {
-    console.error('OpenAI usage fetch error:', err.message);
-    return { provider: 'openai', error: err.message, fetchedAt: new Date().toISOString() };
-  }
-}
-
-async function fetchOpenRouterUsage() {
-  if (!OPENROUTER_API_KEY) return null;
-  try {
-    const keyData = await httpsGetJson('openrouter.ai', '/api/v1/auth/key', {
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`
-    });
-    const creditsUsed = keyData?.data?.usage || 0;
-    const creditsLimit = keyData?.data?.limit || null;
-    return {
-      provider: 'openrouter',
-      costUsd: creditsUsed,
-      creditsLimit,
-      inputTokens: 0,
-      outputTokens: 0,
-      models: [],
-      fetchedAt: new Date().toISOString(),
-      raw: keyData
-    };
-  } catch (err) {
-    console.error('OpenRouter usage fetch error:', err.message);
+    console.error('OpenRouter activity fetch error:', err.message);
     return { provider: 'openrouter', error: err.message, fetchedAt: new Date().toISOString() };
   }
 }
@@ -584,25 +376,14 @@ async function getProviderUsage() {
   if (usageCache.data && Date.now() - usageCache.fetchedAt < USAGE_POLL_TTL_MS) {
     return usageCache.data;
   }
-  const results = await Promise.allSettled([
-    fetchAnthropicUsage(),
-    fetchOpenAIUsage(),
-    fetchOpenRouterUsage()
-  ]);
-  const providers = results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
-  const totalCost = providers.reduce((sum, p) => sum + (p.costUsd || 0), 0);
-  const totalInput = providers.reduce((sum, p) => sum + (p.inputTokens || 0), 0);
-  const totalOutput = providers.reduce((sum, p) => sum + (p.outputTokens || 0), 0);
+  const provider = await fetchOpenRouterActivity();
+  const providers = provider ? [provider] : [];
   const data = {
-    totalCostUsd: totalCost,
-    totalInputTokens: totalInput,
-    totalOutputTokens: totalOutput,
+    totalCostUsd: provider?.costUsd || 0,
+    totalInputTokens: provider?.inputTokens || 0,
+    totalOutputTokens: provider?.outputTokens || 0,
     providers,
-    configuredProviders: [
-      ANTHROPIC_ADMIN_KEY ? 'anthropic' : null,
-      OPENAI_ADMIN_KEY ? 'openai' : null,
-      OPENROUTER_API_KEY ? 'openrouter' : null
-    ].filter(Boolean),
+    configuredProviders: OPENROUTER_API_KEY ? ['openrouter'] : [],
     fetchedAt: new Date().toISOString()
   };
   usageCache = { data, fetchedAt: Date.now() };
@@ -670,24 +451,6 @@ const server = http.createServer(async (req, res) => {
 
   const approvalMatch = /^\/api\/approvals\/([^/]+)\/resolve$/.exec(url.pathname);
   if (req.method === 'POST' && approvalMatch) return handleApprovalResolve(req, res, decodeURIComponent(approvalMatch[1]));
-
-  // LLM Proxy routes
-  if (url.pathname === '/api/proxy/health' && req.method === 'GET') {
-    return sendJson(res, 200, { ok: true, enabled: MC_PROXY_ENABLED, providers: Object.keys(PROXY_PROVIDERS) });
-  }
-  const proxyMatch = /^\/api\/proxy\/([a-z]+)(\/.*)?$/.exec(url.pathname);
-  if (req.method === 'POST' && proxyMatch) {
-    if (!MC_PROXY_ENABLED) return sendJson(res, 503, { error: 'proxy_disabled', hint: 'Set MC_PROXY_ENABLED=true' });
-    const provider = proxyMatch[1];
-    const upstreamPath = proxyMatch[2] || '/';
-    try {
-      return await handleProxy(req, res, provider, upstreamPath);
-    } catch (err) {
-      console.error('Proxy error:', err.message);
-      if (!res.headersSent) sendJson(res, 502, { error: 'proxy_error', message: err.message });
-    }
-    return;
-  }
 
   // Static file serving
   const requested = url.pathname === '/' ? '/index.html' : url.pathname;
